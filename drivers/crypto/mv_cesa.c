@@ -269,12 +269,10 @@ static void mv_process_current_q(int first_block)
 	}
 	if (req_ctx->decrypt) {
 		op.config |= CFG_DIR_DEC;
-		memcpy(cpg->sram + SRAM_DATA_KEY_P, ctx->aes_dec_key,
-				AES_KEY_LEN);
+		memcpy(cpg->sram + SRAM_DATA_KEY_P, ctx->aes_dec_key, AES_KEY_LEN);
 	} else {
 		op.config |= CFG_DIR_ENC;
-		memcpy(cpg->sram + SRAM_DATA_KEY_P, ctx->aes_enc_key,
-				AES_KEY_LEN);
+		memcpy(cpg->sram + SRAM_DATA_KEY_P, ctx->aes_enc_key, AES_KEY_LEN);
 	}
 
 	switch (ctx->key_len) {
@@ -335,9 +333,8 @@ static void mv_process_hash_current(int first_block)
 	}
 
 	op.mac_src_p =
-		MAC_SRC_DATA_P(SRAM_DATA_IN_START) | MAC_SRC_TOTAL_LEN((u32)
-		req_ctx->
-		count);
+		MAC_SRC_DATA_P(SRAM_DATA_IN_START) |
+		MAC_SRC_TOTAL_LEN((u32)req_ctx->count);
 
 	setup_data_in();
 
@@ -372,7 +369,8 @@ static void mv_process_hash_current(int first_block)
 		}
 	}
 
-	memcpy(cpg->sram + SRAM_CONFIG, &op, sizeof(struct sec_accel_config));
+	memcpy(cpg->sram + SRAM_CONFIG, &op,
+			sizeof(struct sec_accel_config));
 
 	/* GO */
 	mv_setup_timer();
