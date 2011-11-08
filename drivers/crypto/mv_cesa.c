@@ -158,6 +158,7 @@ struct mv_req_hash_ctx {
 	u64 count;
 	u32 state[SHA1_DIGEST_SIZE / 4];
 	u8 buffer[SHA1_BLOCK_SIZE];
+	dma_addr_t buffer_dma;
 	int first_hash;		/* marks that we don't have previous state */
 	int last_chunk;		/* marks that this is the 'final' request */
 	int extra_bytes;	/* unprocessed bytes in buffer */
@@ -638,6 +639,9 @@ static void mv_hash_algo_completion(void)
 		dma_unmap_single(cpg->dev, ctx->result_dma,
 				ctx->digestsize, DMA_FROM_DEVICE);
 
+		dma_unmap_single(cpg->dev, ctx->buffer_dma,
+				SHA1_BLOCK_SIZE, DMA_TO_DEVICE);
+
 		if (unlikely(ctx->count > MAX_HW_HASH_SIZE)) {
 			mv_save_digest_state(ctx);
 			mv_hash_final_fallback(req);
@@ -757,8 +761,10 @@ static void mv_start_new_hash_req(struct ahash_request *req)
 		p->process = mv_update_hash_config;
 
 		if (unlikely(old_extra_bytes)) {
-			memcpy(cpg->sram + SRAM_DATA_IN_START, ctx->buffer,
-			       old_extra_bytes);
+			dma_sync_single_for_device(cpg->dev, ctx->buffer_dma,
+					SHA1_BLOCK_SIZE, DMA_TO_DEVICE);
+			mv_dma_memcpy(cpg->sram_phys + SRAM_DATA_IN_START,
+					ctx->buffer_dma, old_extra_bytes);
 			p->crypt_len = old_extra_bytes;
 		}
 
@@ -903,6 +909,8 @@ static void mv_init_hash_req_ctx(struct mv_req_hash_ctx *ctx, int op,
 	ctx->first_hash = 1;
 	ctx->last_chunk = is_last;
 	ctx->count_add = count_add;
+	ctx->buffer_dma = dma_map_single(cpg->dev, ctx->buffer,
+			SHA1_BLOCK_SIZE, DMA_TO_DEVICE);
 }
 
 static void mv_update_hash_req_ctx(struct mv_req_hash_ctx *ctx, int is_last,
