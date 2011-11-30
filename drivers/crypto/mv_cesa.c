@@ -10,6 +10,7 @@
 #include <crypto/algapi.h>
 #include <linux/crypto.h>
 #include <linux/dma-mapping.h>
+#include <linux/dmapool.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/kthread.h>
@@ -27,6 +28,9 @@
 #define MV_CESA	"MV-CESA:"
 #define MAX_HW_HASH_SIZE	0xFFFF
 #define MV_CESA_EXPIRE		500 /* msec */
+
+#define MV_DMA_INIT_POOLSIZE 16
+#define MV_DMA_ALIGN 16
 
 static int count_sgs(struct scatterlist *, unsigned int);
 
@@ -97,6 +101,11 @@ struct sec_accel_sram {
 #define sa_ivo	type.hash.ivo
 } __attribute__((packed));
 
+struct u32_mempair {
+	u32 *vaddr;
+	dma_addr_t daddr;
+};
+
 struct crypto_priv {
 	struct device *dev;
 	void __iomem *reg;
@@ -120,6 +129,11 @@ struct crypto_priv {
 
 	struct sec_accel_sram sa_sram;
 	dma_addr_t sa_sram_dma;
+
+	struct dma_pool *u32_pool;
+	struct u32_mempair *u32_list;
+	int u32_list_len;
+	int u32_usage;
 };
 
 static struct crypto_priv *cpg;
@@ -189,6 +203,54 @@ static void mv_setup_timer(void)
 	setup_timer(&cpg->completion_timer, &mv_completion_timer_callback, 0);
 	mod_timer(&cpg->completion_timer,
 			jiffies + msecs_to_jiffies(MV_CESA_EXPIRE));
+}
+
+#define U32_ITEM(x)		(cpg->u32_list[x].vaddr)
+#define U32_ITEM_DMA(x)		(cpg->u32_list[x].daddr)
+
+static inline int set_u32_poolsize(int nelem)
+{
+	/* need to increase size first if requested */
+	if (nelem > cpg->u32_list_len) {
+		struct u32_mempair *newmem;
+		int newsize = nelem * sizeof(struct u32_mempair);
+
+		newmem = krealloc(cpg->u32_list, newsize, GFP_KERNEL);
+		if (!newmem)
+			return -ENOMEM;
+		cpg->u32_list = newmem;
+	}
+
+	/* allocate/free dma descriptors, adjusting cpg->u32_list_len on the go */
+	for (; cpg->u32_list_len < nelem; cpg->u32_list_len++) {
+		U32_ITEM(cpg->u32_list_len) = dma_pool_alloc(cpg->u32_pool,
+				GFP_KERNEL, &U32_ITEM_DMA(cpg->u32_list_len));
+		if (!U32_ITEM((cpg->u32_list_len)))
+			return -ENOMEM;
+	}
+	for (; cpg->u32_list_len > nelem; cpg->u32_list_len--)
+		dma_pool_free(cpg->u32_pool, U32_ITEM(cpg->u32_list_len - 1),
+				U32_ITEM_DMA(cpg->u32_list_len - 1));
+
+	/* ignore size decreases but those to zero */
+	if (!nelem) {
+		kfree(cpg->u32_list);
+		cpg->u32_list = 0;
+	}
+	return 0;
+}
+
+static inline void mv_dma_u32_copy(dma_addr_t dst, u32 val)
+{
+	if (unlikely(cpg->u32_usage == cpg->u32_list_len)
+	    && set_u32_poolsize(cpg->u32_list_len << 1)) {
+		printk(KERN_ERR MV_CESA "resizing poolsize to %d failed\n",
+				cpg->u32_list_len << 1);
+		return;
+	}
+	*(U32_ITEM(cpg->u32_usage)) = val;
+	mv_dma_memcpy(dst, U32_ITEM_DMA(cpg->u32_usage), sizeof(u32));
+	cpg->u32_usage++;
 }
 
 static inline bool
@@ -392,36 +454,13 @@ static void mv_init_crypt_config(struct ablkcipher_request *req)
 			sizeof(struct sec_accel_sram), DMA_TO_DEVICE);
 	mv_dma_memcpy(cpg->sram_phys + SRAM_CONFIG, cpg->sa_sram_dma,
 			sizeof(struct sec_accel_sram));
-
-	mv_dma_separator();
-	dma_copy_buf_to_dst(&cpg->p, cpg->sram_phys + SRAM_DATA_OUT_START, cpg->p.crypt_len);
-
-	/* GO */
-	mv_setup_timer();
-	mv_dma_trigger();
-	writel(SEC_CMD_EN_SEC_ACCL0, cpg->reg + SEC_ACCEL_CMD);
 }
 
 static void mv_update_crypt_config(void)
 {
-	struct sec_accel_config *op = &cpg->sa_sram.op;
-
 	/* update the enc_len field only */
-
-	op->enc_len = cpg->p.crypt_len;
-
-	dma_sync_single_for_device(cpg->dev, cpg->sa_sram_dma + 2 * sizeof(u32),
-			sizeof(u32), DMA_TO_DEVICE);
-	mv_dma_memcpy(cpg->sram_phys + SRAM_CONFIG + 2 * sizeof(u32),
-			cpg->sa_sram_dma + 2 * sizeof(u32), sizeof(u32));
-
-	mv_dma_separator();
-	dma_copy_buf_to_dst(&cpg->p, cpg->sram_phys + SRAM_DATA_OUT_START, cpg->p.crypt_len);
-
-	/* GO */
-	mv_setup_timer();
-	mv_dma_trigger();
-	writel(SEC_CMD_EN_SEC_ACCL0, cpg->reg + SEC_ACCEL_CMD);
+	mv_dma_u32_copy(cpg->sram_phys + SRAM_CONFIG + 2 * sizeof(u32),
+			(u32)cpg->p.crypt_len);
 }
 
 static void mv_crypto_algo_completion(void)
@@ -660,6 +699,7 @@ static void dequeue_complete_req(void)
 	cpg->p.crypt_len = 0;
 
 	mv_dma_clear();
+	cpg->u32_usage = 0;
 
 	BUG_ON(cpg->eng_st != ENGINE_W_DEQUEUE);
 	if (cpg->p.hw_processed_bytes < cpg->p.hw_nbytes) {
@@ -701,7 +741,6 @@ static void mv_start_new_crypt_req(struct ablkcipher_request *req)
 	memset(p, 0, sizeof(struct req_progress));
 	p->hw_nbytes = req->nbytes;
 	p->complete = mv_crypto_algo_completion;
-	p->process = mv_update_crypt_config;
 
 	/* assume inplace request */
 	if (req->src == req->dst) {
@@ -728,6 +767,24 @@ static void mv_start_new_crypt_req(struct ablkcipher_request *req)
 
 	setup_data_in();
 	mv_init_crypt_config(req);
+	mv_dma_separator();
+	dma_copy_buf_to_dst(&cpg->p, cpg->sram_phys + SRAM_DATA_OUT_START, cpg->p.crypt_len);
+	cpg->p.hw_processed_bytes += cpg->p.crypt_len;
+	while (cpg->p.hw_processed_bytes < cpg->p.hw_nbytes) {
+		cpg->p.crypt_len = 0;
+
+		setup_data_in();
+		mv_update_crypt_config();
+		mv_dma_separator();
+		dma_copy_buf_to_dst(&cpg->p, cpg->sram_phys + SRAM_DATA_OUT_START, cpg->p.crypt_len);
+		cpg->p.hw_processed_bytes += cpg->p.crypt_len;
+	}
+
+
+	/* GO */
+	mv_setup_timer();
+	mv_dma_trigger();
+	writel(SEC_CMD_EN_SEC_ACCL0, cpg->reg + SEC_ACCEL_CMD);
 }
 
 static void mv_start_new_hash_req(struct ahash_request *req)
@@ -1294,18 +1351,29 @@ static int mv_probe(struct platform_device *pdev)
 
 	writel(0, cpg->reg + SEC_ACCEL_INT_STATUS);
 	writel(SEC_INT_ACC0_IDMA_DONE, cpg->reg + SEC_ACCEL_INT_MASK);
-	writel((SEC_CFG_STOP_DIG_ERR | SEC_CFG_CH0_W_IDMA |
+	writel((SEC_CFG_STOP_DIG_ERR | SEC_CFG_CH0_W_IDMA | SEC_CFG_MP_CHAIN |
 	        SEC_CFG_ACT_CH0_IDMA), cpg->reg + SEC_ACCEL_CFG);
 	writel(SRAM_CONFIG, cpg->reg + SEC_ACCEL_DESC_P0);
 
 	cp->sa_sram_dma = dma_map_single(&pdev->dev, &cp->sa_sram,
 			sizeof(struct sec_accel_sram), DMA_TO_DEVICE);
 
+	cpg->u32_pool = dma_pool_create("CESA U32 Item Pool",
+			&pdev->dev, sizeof(u32), MV_DMA_ALIGN, 0);
+	if (!cpg->u32_pool) {
+		ret = -ENOMEM;
+		goto err_mapping;
+	}
+	if (set_u32_poolsize(MV_DMA_INIT_POOLSIZE)) {
+		printk(KERN_ERR MV_CESA "failed to initialise poolsize\n");
+		goto err_pool;
+	}
+
 	ret = crypto_register_alg(&mv_aes_alg_ecb);
 	if (ret) {
 		printk(KERN_WARNING MV_CESA
 		       "Could not register aes-ecb driver\n");
-		goto err_irq;
+		goto err_poolsize;
 	}
 
 	ret = crypto_register_alg(&mv_aes_alg_cbc);
@@ -1332,7 +1400,13 @@ static int mv_probe(struct platform_device *pdev)
 	return 0;
 err_unreg_ecb:
 	crypto_unregister_alg(&mv_aes_alg_ecb);
-err_irq:
+err_poolsize:
+	set_u32_poolsize(0);
+err_pool:
+	dma_pool_destroy(cpg->u32_pool);
+err_mapping:
+	dma_unmap_single(&pdev->dev, cpg->sa_sram_dma,
+			sizeof(struct sec_accel_sram), DMA_TO_DEVICE);
 	free_irq(irq, cp);
 err_thread:
 	kthread_stop(cp->queue_th);
@@ -1361,6 +1435,8 @@ static int mv_remove(struct platform_device *pdev)
 	free_irq(cp->irq, cp);
 	dma_unmap_single(&pdev->dev, cpg->sa_sram_dma,
 			sizeof(struct sec_accel_sram), DMA_TO_DEVICE);
+	set_u32_poolsize(0);
+	dma_pool_destroy(cpg->u32_pool);
 	memset(cp->sram, 0, cp->sram_size);
 	iounmap(cp->sram);
 	iounmap(cp->reg);
