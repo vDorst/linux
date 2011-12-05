@@ -70,7 +70,6 @@ struct req_progress {
 	struct scatterlist *src_sg;
 	struct scatterlist *dst_sg;
 	void (*complete) (void);
-	void (*process) (void);
 
 	/* src mostly */
 	int sg_src_left;
@@ -650,25 +649,17 @@ static void mv_hash_algo_completion(void)
 static void dequeue_complete_req(void)
 {
 	struct crypto_async_request *req = cpg->cur_req;
-	cpg->p.hw_processed_bytes += cpg->p.crypt_len;
-	cpg->p.crypt_len = 0;
 
 	mv_dma_clear();
 	cpg->u32_usage = 0;
 
 	BUG_ON(cpg->eng_st != ENGINE_W_DEQUEUE);
-	if (cpg->p.hw_processed_bytes < cpg->p.hw_nbytes) {
-		/* process next scatter list entry */
-		cpg->eng_st = ENGINE_BUSY;
-		setup_data_in();
-		cpg->p.process();
-	} else {
-		cpg->p.complete();
-		cpg->eng_st = ENGINE_IDLE;
-		local_bh_disable();
-		req->complete(req, 0);
-		local_bh_enable();
-	}
+
+	cpg->p.complete();
+	cpg->eng_st = ENGINE_IDLE;
+	local_bh_disable();
+	req->complete(req, 0);
+	local_bh_enable();
 }
 
 static int count_sgs(struct scatterlist *sl, unsigned int total_bytes)
