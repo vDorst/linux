@@ -9,9 +9,31 @@
 #ifndef __ASM_ARCH_PM_H
 #define __ASM_ARCH_PM_H
 
-#include <asm/errno.h>
+#include <linux/errno.h>
 #include <mach/irqs.h>
 
+/* Software Reset Control Register */
+#define PMU_SW_RST_CTRL_REG	(DOVE_PMU_VIRT_BASE + 0x30)
+#define  PMU_SW_RST_USB0_MASK		(0x1 << 0)
+#define  PMU_SW_RST_GIGA_MASK		(0x1 << 2)
+#define  PMU_SW_RST_SATA_MASK		(0x1 << 3)
+#define  PMU_SW_RST_PEX0_MASK		(0x1 << 4)
+#define  PMU_SW_RST_PEX1_MASK		(0x1 << 5)
+#define  PMU_SW_RST_SDIO0_MASK		(0x1 << 8)
+#define  PMU_SW_RST_SDIO1_MASK		(0x1 << 9)
+#define  PMU_SW_RST_NAND_MASK		(0x1 << 10)
+#define  PMU_SW_RST_CAMERA_MASK		(0x1 << 11)
+#define  PMU_SW_RST_AUDIO0_MASK		(0x1 << 12)
+#define  PMU_SW_RST_AUDIO1_MASK		(0x1 << 13)
+#define  PMU_SW_RST_XOR_MASK		(0x1 << 14)
+#define  PMU_SW_RST_CESA_MASK		(0x1 << 15)
+#define  PMU_SW_RST_VIDEO_MASK		(0x1 << 16)
+#define  PMU_SW_RST_LCD_MASK		(0x1 << 17)
+#define  PMU_SW_RST_GPU_MASK		(0x1 << 18)
+#define  PMU_SW_RST_AC97_MASK		(0x1 << 21)
+#define  PMU_SW_RST_PDMA_MASK		(0x1 << 22)
+
+/* Clock gating register */
 #define CLOCK_GATING_CONTROL	(DOVE_PMU_VIRT_BASE + 0x38)
 #define  CLOCK_GATING_USB0_MASK		(1 << 0)
 #define  CLOCK_GATING_USB1_MASK		(1 << 1)
@@ -32,8 +54,102 @@
 #define  CLOCK_GATING_XOR1_MASK		(1 << 24)
 #define  CLOCK_GATING_GIGA_PHY_MASK	(1 << 30)
 
+/* Thermal Manager Control and Status Register */
+#define PMU_THERMAL_MNGR_REG	(DOVE_PMU_VIRT_BASE + 0x1C)
+#define  PMU_TM_DISABLE_OFFS		0
+#define  PMU_TM_DISABLE_MASK		(0x1 << PMU_TM_DISABLE_OFFS)
+#define  PMU_TM_CURR_TEMP_OFFS		1
+#define  PMU_TM_CURR_TEMP_MASK		(0x1FF << PMU_TM_CURR_TEMP_OFFS)
+#define  PMU_TM_COOL_THRSH_OFFS		10
+#define  PMU_TM_COOL_THRSH_MASK		(0x1FF << PMU_TM_COOL_THRSH_OFFS)
+#define  PMU_TM_OVRHEAT_THRSH_OFFS	19
+#define  PMU_TM_OVRHEAT_THRSH_MASK	(0x1FF << PMU_TM_OVRHEAT_THRSH_OFFS)
+
+/* Thermal Manager Overheat Delay Register */
+#define PMU_TM_OVRHEAT_DLY_REG	(DOVE_PMU_VIRT_BASE + 0x20)
+
+/* Thermal Manager Cooling Delay Register */
+#define PMU_TM_COOLING_DLY_REG	(DOVE_PMU_VIRT_BASE + 0x24)
+
+/* PMU interrupt cause and mask */
 #define PMU_INTERRUPT_CAUSE	(DOVE_PMU_VIRT_BASE + 0x50)
 #define PMU_INTERRUPT_MASK	(DOVE_PMU_VIRT_BASE + 0x54)
+#define  PMU_INTERRUPT_DFS_DONE_MASK		(0x1 << 0)
+#define  PMU_INTERRUPT_DVS_DONE_MASK		(0x1 << 1)
+#define  PMU_INTERRUPT_COOLING_MASK		(0x1 << 3)
+#define  PMU_INTERRUPT_OVRHEAT_MASK		(0x1 << 4)
+#define  PMU_INTERRUPT_RTC_ALARM_MASK		(0x1 << 5)
+#define  PMU_INTERRUPT_BAT_FAULT_MASK		(0x1 << 6)
+#define  PMU_INTERRUPT_EXT0_WKUP_MASK		(0x1 << 7)
+#define  PMU_INTERRUPT_EXT1_WKUP_MASK		(0x1 << 8)
+#define  PMU_INTERRUPT_EXT2_WKUP_MASK		(0x1 << 9)
+
+/* Theraml Diode Control 0 Register */
+#define PMU_TEMP_DIOD_CTRL0_REG	(DOVE_PMU_VIRT_BASE + 0x5C)
+#define  PMU_TDC0_PWR_DWN_MASK		(0x1 << 0)
+#define  PMU_TDC0_SW_RST_MASK		(0x1 << 1)
+#define  PMU_TDC0_TC_TRIP_OFFS		2
+#define  PMU_TDC0_TC_TRIP_MASK		(0x7 << PMU_TDC0_TC_TRIP_OFFS)
+#define  PMU_TDC0_SEL_VCAL_OFFS		5
+#define  PMU_TDC0_SEL_VCAL_MASK		(0x3 << PMU_TDC0_SEL_VCAL_OFFS)
+#define  PMU_TDC0_VBE_BYPS_MASK		(0x1 << 7)
+#define  PMU_TDC0_SELF_RFRNC_MASK	(0x1 << 8)
+#define  PMU_TDC0_A_TEST_OFFS		9
+#define  PMU_TDC0_A_TEST_MASK		(0x3 << PMU_TDC0_A_TEST_OFFS)
+#define  PMU_TDC0_REF_CAL_CNT_OFFS	11
+#define  PMU_TDC0_REF_CAL_CNT_MASK	(0x1FF << PMU_TDC0_REF_CAL_CNT_OFFS)
+#define  PMU_TDC0_CAL_CAP_SRC_OFFS	20
+#define  PMU_TDC0_CAL_CAP_SRC_MASK	(0x7 << PMU_TDC0_CAL_CAP_SRC_OFFS)
+#define  PMU_TDC0_SEL_IP_MODE_MASK	(0x1 << 23)
+#define  PMU_TDC0_SEL_VSEN_MASK		(0x1 << 24)
+#define  PMU_TDC0_AVG_NUM_OFFS		25
+#define  PMU_TDC0_AVG_NUM_MASK		(0x7 << PMU_TDC0_AVG_NUM_OFFS)
+#define  PMU_TDC0_DBL_SLOP_MASK		(0x1 << 28)
+#define  PMU_TDC0_OTF_CAL_MASK		(0x1 << 29)
+#define  PMU_TDC0_SLEEP_EN_MASK		(0x1 << 30)
+
+/* Thermal Diode Control 1 Register */
+#define PMU_TEMP_DIOD_CTRL1_REG	(DOVE_PMU_VIRT_BASE + 0x60)
+#define  PMU_TDC1_CAL_STRT_VAL_OFFS	0
+#define  PMU_TDC1_CAL_STRT_VAL_MASK	(0xFF << PMU_TDC1_CAL_STRT_VAL_OFFS)
+#define  PMU_TDC1_STRT_CAL_MASK		(0x1 << 8)
+#define  PMU_TDC1_CAL_STAT_MASK		(0x1 << 9)
+#define  PMU_TDC1_TEMP_VLID_MASK	(0x1 << 10)
+
+/* PMU General Control Register */
+#define PMU_GNRL_CTRL_REG	(DOVE_PMU_VIRT_BASE + 0x70)
+#define  PMU_GCTRL_CLK_CHNG_MASK	(0x1 << 0)
+#define  PMU_GCTRL_CLK_SRC_MASK		(0x1 << 1)
+
+/* PMU Power Supply Control Register */
+#define PMU_PWR_SUPLY_CTRL_REG	(DOVE_PMU_VIRT_BASE + 0x8010)
+#define  PMU_PWR_GOOD_PIN_EN_OFFS	0
+#define  PMU_PWR_GOOD_PIN_EN_MASK	(0x1 << PMU_PWR_GOOD_PIN_EN_OFFS)
+#define  PMU_PWR_CPU_OFF_LEVEL_OFFS	1
+#define  PMU_PWR_CPU_OFF_LEVEL_MASK	(0x1 << PMU_PWR_CPU_OFF_LEVEL_OFFS)
+#define  PMU_PWR_GPU_PWR_DWN_OFFS	2
+#define  PMU_PWR_GPU_PWR_DWN_MASK	(0x1 << PMU_PWR_GPU_PWR_DWN_OFFS)
+#define  PMU_PWR_VPU_PWR_DWN_OFFS	3
+#define  PMU_PWR_VPU_PWR_DWN_MASK	(0x1 << PMU_PWR_VPU_PWR_DWN_OFFS)
+#define  PMU_PWR_CPU_ON_LEVEL_OFFS	4
+#define  PMU_PWR_CPU_ON_LEVEL_MASK	(0x1 << PMU_PWR_CPU_ON_LEVEL_OFFS)
+#define  PMU_PWR_STBY_OFF_LEVEL_OFFS	5
+#define  PMU_PWR_STBY_OFF_LEVEL_MASK	(0x1 << PMU_PWR_STBY_OFF_LEVEL_OFFS)
+#define  PMU_PWR_STBY_PWRGOOD_EN_OFFS	6
+#define  PMU_PWR_STBY_PWRGOOD_EN_MASK	(0x1 << PMU_PWR_STBY_PWRGOOD_EN_OFFS)
+#define  PMU_PWR_STBY_ON_LEVEL_OFFS	7
+#define  PMU_PWR_STBY_ON_LEVEL_MASK	(0x1 << PMU_PWR_STBY_ON_LEVEL_OFFS)
+#define  PMU_PWR_POWER_GATE_OFFS	8
+#define  PMU_PWR_POWER_GATE_MASK	(0xFF << PMU_PWR_POWER_GATE_OFFS)
+#define  PMU_PWR_DDR_PHY_RST_MSK_OFFS	31
+#define  PMU_PWR_DDR_PHY_RST_MSK_MASK	(0x1 << PMU_PWR_DDR_PHY_RST_MSK_OFFS)
+
+/* PMU ISO Control Register */
+#define PMU_ISO_CTRL_REG	(DOVE_PMU_VIRT_BASE + 0x8058)
+#define  PMU_ISO_VIDEO_MASK		(0x1 << 0)
+#define  PMU_ISO_GPU_MASK		(0x1 << 1)
+#define  PMU_ISO_CPU_MASK		(0x1 << 2)
+#define  PMU_ISO_CORE_MASK		(0x1 << 3)
 
 static inline int pmu_to_irq(int pin)
 {

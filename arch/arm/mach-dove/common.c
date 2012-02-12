@@ -16,9 +16,9 @@
 #include <linux/clk.h>
 #include <linux/ata_platform.h>
 #include <linux/gpio.h>
+#include <linux/timex.h>
 #include <asm/page.h>
 #include <asm/setup.h>
-#include <asm/timex.h>
 #include <asm/hardware/cache-tauros2.h>
 #include <asm/mach/map.h>
 #include <asm/mach/time.h>
@@ -98,6 +98,14 @@ void __init dove_ge00_init(struct mv643xx_eth_platform_data *eth_data)
 void __init dove_rtc_init(void)
 {
 	orion_rtc_init(DOVE_RTC_PHYS_BASE, IRQ_DOVE_RTC);
+}
+
+/*****************************************************************************
+ * SoC hwmon Thermal Sensor
+ ****************************************************************************/
+void __init dove_hwmon_init(void)
+{
+	platform_device_register_simple("dove-temp", 0, NULL, 0);
 }
 
 /*****************************************************************************

@@ -25,6 +25,7 @@ void dove_init_early(void);
 void dove_init_irq(void);
 void dove_setup_cpu_mbus(void);
 void dove_ge00_init(struct mv643xx_eth_platform_data *eth_data);
+void dove_hwmon_init(void);
 void dove_sata_init(struct mv_sata_platform_data *sata_data);
 void dove_pcie_init(int init_port0, int init_port1);
 void dove_ehci0_init(void);
