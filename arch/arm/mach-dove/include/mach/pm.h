@@ -84,6 +84,11 @@
 #define  PMU_INTERRUPT_EXT1_WKUP_MASK		(0x1 << 8)
 #define  PMU_INTERRUPT_EXT2_WKUP_MASK		(0x1 << 9)
 
+/* I/O pads power control */
+#define IO_PWR_CTRL	(DOVE_PMU_VIRT_BASE + 0x58)
+#define  IO_PWR_CTRL_PCIE_PHY0	(1 << 16)
+#define  IO_PWR_CTRL_PCIE_PHY1	(1 << 17)
+
 /* Theraml Diode Control 0 Register */
 #define PMU_TEMP_DIOD_CTRL0_REG	(DOVE_PMU_VIRT_BASE + 0x5C)
 #define  PMU_TDC0_PWR_DWN_MASK		(0x1 << 0)

@@ -31,6 +31,7 @@
 #include <plat/common.h>
 #include <plat/addr-map.h>
 #include "common.h"
+#include "clock.h"
 
 static int get_tclk(void);
 
@@ -281,6 +282,7 @@ void __init dove_init(void)
 {
 	int tclk;
 
+	dove_devclks_init();
 	tclk = get_tclk();
 
 	printk(KERN_INFO "Dove 88AP510 SoC, ");
