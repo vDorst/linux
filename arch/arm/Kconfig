@@ -544,7 +544,7 @@ config ARCH_DOVE
 	select GENERIC_CLOCKEVENTS
 	select PLAT_ORION
 	select CLKDEV_LOOKUP
-#	select HAVE_MACH_CLKDEV
+	select NEED_MACH_MEMORY_H
 	help
 	  Support for the Marvell Dove SoC 88AP510
 
@@ -1726,6 +1726,7 @@ config FORCE_MAX_ZONEORDER
 	int "Maximum zone order" if ARCH_SHMOBILE
 	range 11 64 if ARCH_SHMOBILE
 	default "9" if SA1111
+	default "19" if ARCH_DOVE
 	default "11"
 	help
 	  The kernel memory allocator divides physically contiguous memory
