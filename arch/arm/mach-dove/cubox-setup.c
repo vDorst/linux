@@ -23,6 +23,8 @@
 #include <linux/spi/orion_spi.h>
 #include <linux/spi/flash.h>
 #include <linux/gpio.h>
+#include <video/dovefb.h>
+#include <video/dovefbreg.h>
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include <mach/dove.h>
@@ -34,6 +36,89 @@ static struct mv643xx_eth_platform_data cubox_ge00_data = {
 
 static struct mv_sata_platform_data cubox_sata_data = {
 	.n_ports        = 1,
+};
+
+/*****************************************************************************
+ * LCD
+ ****************************************************************************/
+/*
+ * LCD HW output Red[0] to LDD[0] when set bit [19:16] of reg 0x190
+ * to 0x0. Which means HW outputs BGR format default. All platforms
+ * uses this controller should enable .panel_rbswap. Unless layout
+ * design connects Blue[0] to LDD[0] instead.
+ */
+static struct dovefb_mach_info dove_cubox_lcd0_dmi = {
+	.id_gfx			= "GFX Layer 0",
+	.id_ovly		= "Video Layer 0",
+	.clk_src		= MRVL_EXT_CLK1,
+	.clk_name		= "SILAB_CLK0",
+	.pix_fmt		= PIX_FMT_RGB888PACK,
+	.io_pin_allocation	= IOPAD_DUMB24,
+	.panel_rgb_type		= DUMB24_RGB888_0,
+	.panel_rgb_reverse_lanes = 0,
+	.gpio_output_data	= 0,
+	.gpio_output_mask	= 0,
+	.secondary_ddc_mode	= 1,
+	.invert_composite_blank	= 0,
+	.invert_pix_val_ena	= 0,
+	.invert_pixclock	= 0,
+	.invert_vsync		= 0,
+	.invert_hsync		= 0,
+	.panel_rbswap		= 1,
+	.active			= 1,
+};
+
+static struct dovefb_mach_info dove_cubox_lcd0_vid_dmi = {
+	.id_ovly		= "Video Layer 0",
+	.pix_fmt		= PIX_FMT_RGB888PACK,
+	.io_pin_allocation	= IOPAD_DUMB24,
+	.panel_rgb_type		= DUMB24_RGB888_0,
+	.panel_rgb_reverse_lanes = 0,
+	.gpio_output_data	= 0,
+	.gpio_output_mask	= 0,
+	.ddc_i2c_adapter	= -1,
+	.invert_composite_blank	= 0,
+	.invert_pix_val_ena	= 0,
+	.invert_pixclock	= 0,
+	.invert_vsync		= 0,
+	.invert_hsync		= 0,
+	.panel_rbswap		= 1,
+	.active			= 0,
+	.enable_lcd0		= 0,
+};
+
+void __init dove_cubox_clcd_init(void)
+{
+#ifdef CONFIG_FB_DOVE
+	/* Last parameter previously used &dove_rd_avng_v3_backlight_data */
+	clcd_platform_init(&dove_cubox_lcd0_dmi, &dove_cubox_lcd0_vid_dmi,
+				NULL, NULL, NULL);
+
+#endif /* CONFIG_FB_DOVE */
+}
+
+/*****************************************************************************
+ * I2C devices:
+ *      ALC5630 codec, address 0x
+ *      Battery charger, address 0x??
+ *      G-Sensor, address 0x??
+ *      MCU PIC-16F887, address 0x??
+ ****************************************************************************/
+static struct i2c_board_info __initdata dove_cubox_i2c_bus0_devs[] = {
+	{
+		I2C_BOARD_INFO("silab5351a", 0x60),
+	},
+#ifdef CONFIG_TDA19988
+	{ /* First CEC that enables 0x70 for HDMI */
+		I2C_BOARD_INFO("tda99Xcec", 0x34), .irq = 91,
+	},
+	{
+		I2C_BOARD_INFO("tda998X", 0x70), .irq = 91,
+	},
+#endif
+	{
+	I2C_BOARD_INFO("cs42l51", 0x4A), /* Fake device for spdif only */
+	},
 };
 
 /*****************************************************************************
@@ -85,11 +170,14 @@ static void __init cubox_init(void)
 	dove_sata_init(&cubox_sata_data);
 	dove_sdio0_init();
 	dove_sdio1_init();
+	dove_cubox_clcd_init();
 	dove_spi0_init();
 	dove_spi1_init();
 	dove_uart0_init();
 	dove_uart1_init();
 	dove_i2c_init();
+	i2c_register_board_info(0, dove_cubox_i2c_bus0_devs,
+				ARRAY_SIZE(dove_cubox_i2c_bus0_devs));
 	spi_register_board_info(cubox_spi_flash_info,
 				ARRAY_SIZE(cubox_spi_flash_info));
 }
