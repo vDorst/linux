@@ -1280,7 +1280,6 @@ static int dovefb_ovly_mmap(struct fb_info *info, struct vm_area_struct *vma)
 		return -EINVAL;
 	off = vma->vm_pgoff << PAGE_SHIFT;
 
-	printk("Rabeeh - FIX lock_kernel\n");
 /*	lock_kernel();*/
 
 	/* frame buffer memory */
