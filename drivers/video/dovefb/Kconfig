@@ -1,7 +1,6 @@
 config FB_DOVE
 	bool "Marvell LCD controller"
 	depends on FB && ARCH_DOVE
-	select FB_DOVE_CLCD
 	select FB_CFB_FILLRECT
 	select FB_CFB_COPYAREA
 	select FB_CFB_IMAGEBLIT
@@ -9,6 +8,14 @@ config FB_DOVE
 	select I2C_MV64XXX
 	select FB_DDC
 	select FB_MODE_HELPERS
+	select TDA19988 if MACH_CUBOX
 	help
 	  Support for Marvell Dove SoC LCD controller.
+
+config TDA19988
+	bool "NXP TDA19988 HDMI transmitter"
+	depends on FB && ARCH_DOVE
+	help
+	 Support for NXP TDA19988 HDMI transmitter. This is under ARCH_DOVE,
+	 but can be reused by other platforms.
 

@@ -29,6 +29,7 @@
 #include <asm/mach/arch.h>
 #include <mach/dove.h>
 #include "common.h"
+#include "mpp.h"
 
 static struct mv643xx_eth_platform_data cubox_ge00_data = {
 	.phy_addr	= MV643XX_ETH_PHY_ADDR_DEFAULT,
@@ -36,6 +37,28 @@ static struct mv643xx_eth_platform_data cubox_ge00_data = {
 
 static struct mv_sata_platform_data cubox_sata_data = {
 	.n_ports        = 1,
+};
+
+/*****************************************************************************
+ * GPIO setup
+ ****************************************************************************/
+static unsigned int cubox_mpp_list[] __initdata = {
+	MPP1_GPIO1,     /* USB Power Enable */
+	MPP2_GPIO2,     /* USB over-current indication */
+	MPP3_GPIO3,     /* micro button beneath eSata port */
+#if 0
+	/* Not supported for now - FIXME */
+	MPP27_GPIO27,     /* HDMI interrupt */
+#endif
+	0
+};
+
+static unsigned int cubox_mpp_grp_list[] __initdata = {
+	MPP_GRP_24_39_GPIO,
+	MPP_GRP_40_45_SD0,
+	MPP_GRP_46_51_GPIO,
+	MPP_GRP_62_63_UA1,
+	0
 };
 
 /*****************************************************************************
@@ -163,6 +186,7 @@ static void __init cubox_init(void)
 	 */
 	dove_init();
 
+	dove_mpp_conf(cubox_mpp_list, cubox_mpp_grp_list, 0, 0);
 	dove_ge00_init(&cubox_ge00_data);
 	dove_hwmon_init();
 	dove_ehci0_init();

@@ -626,7 +626,7 @@ static int dovefb_gfx_set_par(struct fb_info *fi)
 		m->xres, m->yres, (m->vmode & FB_VMODE_INTERLACED) ? 'i' : 'p',
 		m->refresh);
 	if (!configure_tx_inout(m->xres, m->yres,
-		(m->vmode & FB_VMODE_INTERLACED) 1 : 0, m->refresh))
+		(m->vmode & FB_VMODE_INTERLACED) ? 1 : 0, m->refresh))
 		printk(KERN_ERR "Setting HDMI TX mode failed\n");
 #endif
 
