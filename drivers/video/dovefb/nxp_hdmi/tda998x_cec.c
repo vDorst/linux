@@ -982,14 +982,13 @@ static int this_cdev_open(struct inode *pInode, struct file *pFile)
 /*
  *  ioctl driver :: ioctl
  */
-static int this_cdev_ioctl(struct inode *pInode, struct file *pFile, unsigned int cmd, unsigned long arg)
+static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long arg)
 {
    cec_instance* this = pFile->private_data;
    int err=0;
 
    LOG(KERN_INFO,":%s\n",cec_ioctl(_IOC_NR(cmd)));
 
-   BUG_ON(this->driver.minor!=iminor(pInode));
    if (_IOC_TYPE(cmd) != CEC_IOCTL_BASE) {
       printk(KERN_INFO "hdmicec:%s:unknown ioctl type: %x\n",__func__,_IOC_TYPE(cmd));
       return -ENOIOCTLCMD;
@@ -1990,7 +1989,7 @@ static struct file_operations this_cdev_fops = {
  owner:    THIS_MODULE,
  open:     this_cdev_open,
  release:  this_cdev_release,
-// FIXME ioctl:    this_cdev_ioctl,
+ unlocked_ioctl: this_cdev_ioctl,
 };
 
 /*
