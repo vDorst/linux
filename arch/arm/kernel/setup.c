@@ -889,15 +889,15 @@ static struct machine_desc * __init setup_machine_tags(unsigned int nr)
 		tags = (struct tag *)&init_tags;
 	}
 
-	if (mdesc->fixup)
-		mdesc->fixup(tags, &from, &meminfo);
-
 	if (tags->hdr.tag == ATAG_CORE) {
 		if (meminfo.nr_banks != 0)
 			squash_mem_tags(tags);
 		save_atags(tags);
 		parse_tags(tags);
 	}
+
+	if (mdesc->fixup)
+		mdesc->fixup(tags, &from, &meminfo);
 
 	/* parse_early_param needs a boot_command_line */
 	strlcpy(boot_command_line, from, COMMAND_LINE_SIZE);
