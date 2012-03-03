@@ -19,3 +19,17 @@ config TDA19988
 	 Support for NXP TDA19988 HDMI transmitter. This is under ARCH_DOVE,
 	 but can be reused by other platforms.
 
+config DOVE_GPU
+	bool "Enable DOVE GPU support"
+	depends on ARCH_DOVE
+	default y
+	help
+	  Dove 88AP510 GC600 GPU Support
+
+config DOVE_GPU_MEM_SIZE
+	int "DOVE GPU memory size (MB)"
+	depends on DOVE_GPU
+	default 128
+	help
+	  Set the memory size to be reserved for GPU usage. The value should be
+	  between 64 and 128.
