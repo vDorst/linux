@@ -1217,13 +1217,10 @@ gceSTATUS gckOS_AllocateNonPagedMemory(
 		return gcvSTATUS_OUT_OF_MEMORY;
 	}
 	vaddr			= (gctPOINTER)page_address(page);
-	printk ("Rabeeh - debug - vaddr = 0x%p, virt_to_phys = 0x%x (size = 0x%lx)\n",vaddr,virt_to_phys(vaddr),size);
 	addr			= ioremap_nocache(virt_to_phys(vaddr), size);
 	mdl->dmaHandle	= virt_to_phys(vaddr);
 	mdl->kaddr		= vaddr;
-	printk ("Rabeeh - debug - phys addr = 0x%x\n",mdl->dmaHandle);
 #if ENABLE_ARM_L2_CACHE
-	printk (KERN_ERR"Rabeeh - fixme %s %d\n",__func__,__LINE__);
 //	dma_cache_maint(vaddr, size, DMA_FROM_DEVICE);
 #endif
 
