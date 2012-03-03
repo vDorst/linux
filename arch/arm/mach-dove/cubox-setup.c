@@ -195,6 +195,7 @@ static void __init cubox_init(void)
 	dove_sdio0_init();
 	dove_sdio1_init();
 	dove_cubox_clcd_init();
+	dove_gpu_init();
 	dove_spi0_init();
 	dove_spi1_init();
 	dove_uart0_init();
@@ -214,4 +215,6 @@ MACHINE_START(CUBOX, "SolidRun CuBox")
 	.init_irq	= dove_init_irq,
 	.timer		= &dove_timer,
 	.restart	= dove_restart,
+/* reserve memory for VMETA and GPU */
+	.fixup          = dove_tag_fixup_mem32,
 MACHINE_END
