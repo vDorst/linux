@@ -128,7 +128,7 @@ void __init dove_vmeta_init(void)
 {
 #ifdef CONFIG_UIO_VMETA
 	if (vmeta_size == 0) {
-		printk(KERN_ERROR "memory allocation for VMETA failed\n");
+		printk(KERN_ERR "memory allocation for VMETA failed\n");
 		return;
 	}
 
@@ -207,7 +207,7 @@ void __init dove_gpu_init(void)
 {
 #ifdef CONFIG_DOVE_GPU
 	if (gpu_size == 0) {
-		printk(KERN_ERROR "memory allocation for GPU failed\n");
+		printk(KERN_ERR "memory allocation for GPU failed\n");
 		return;
 	}
 	dove_gpu_resources[2].start = dove_gpu_memory_start;
