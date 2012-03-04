@@ -49,13 +49,13 @@
 #endif
 
 //#ifdef TMFL_LINUX_OS_KERNEL_DRIVER
-#if TMFL_CFG_TWOCUBE // OMAP Zoom II
+#if defined(TMFL_CFG_TWOCUBE) // OMAP Zoom II
 #	include "tmdlHdmiTx_Linux_cfg.c"
-#elif  TMFL_CFG_TWOCUBE
+#elif defined(TMFL_CFG_TWOCUBE)
 #	include "tmdlHdmiTx_Linux_cfg.c"
-#elif TMFL_CFG_INTELCE4100 // Intel CE 4100
+#elif defined(TMFL_CFG_INTELCE4100) // Intel CE 4100
 #	include "tmdlHdmiTx_IntelCE4100_cfg.c"
-#elif TMFL_OS_WINDOWS // Windows demo application
+#elif defined(TMFL_OS_WINDOWS) // Windows demo application
 #	include "tmdlHdmiTx_Win_cfg.c"
 #else // Section to be modified by customer - Default configuration for NXP evalkit
 
