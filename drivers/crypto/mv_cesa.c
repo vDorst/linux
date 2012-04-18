@@ -24,6 +24,7 @@
 
 #include "mv_cesa.h"
 #include "mv_dma.h"
+#include "dma_desclist.h"
 
 #define MV_CESA	"MV-CESA:"
 #define MAX_HW_HASH_SIZE	0xFFFF
@@ -100,11 +101,6 @@ struct sec_accel_sram {
 #define sa_ivo	type.hash.ivo
 } __attribute__((packed));
 
-struct u32_mempair {
-	u32 *vaddr;
-	dma_addr_t daddr;
-};
-
 struct crypto_priv {
 	struct device *dev;
 	void __iomem *reg;
@@ -129,13 +125,13 @@ struct crypto_priv {
 	struct sec_accel_sram sa_sram;
 	dma_addr_t sa_sram_dma;
 
-	struct dma_pool *u32_pool;
-	struct u32_mempair *u32_list;
-	int u32_list_len;
-	int u32_usage;
+	struct dma_desclist desclist;
 };
 
 static struct crypto_priv *cpg;
+
+#define ITEM(x)		((u32 *)DESCLIST_ITEM(cpg->desclist, x))
+#define ITEM_DMA(x)	DESCLIST_ITEM_DMA(cpg->desclist, x)
 
 struct mv_ctx {
 	u8 aes_enc_key[AES_KEY_LEN];
@@ -204,52 +200,17 @@ static void mv_setup_timer(void)
 			jiffies + msecs_to_jiffies(MV_CESA_EXPIRE));
 }
 
-#define U32_ITEM(x)		(cpg->u32_list[x].vaddr)
-#define U32_ITEM_DMA(x)		(cpg->u32_list[x].daddr)
-
-static inline int set_u32_poolsize(int nelem)
-{
-	/* need to increase size first if requested */
-	if (nelem > cpg->u32_list_len) {
-		struct u32_mempair *newmem;
-		int newsize = nelem * sizeof(struct u32_mempair);
-
-		newmem = krealloc(cpg->u32_list, newsize, GFP_KERNEL);
-		if (!newmem)
-			return -ENOMEM;
-		cpg->u32_list = newmem;
-	}
-
-	/* allocate/free dma descriptors, adjusting cpg->u32_list_len on the go */
-	for (; cpg->u32_list_len < nelem; cpg->u32_list_len++) {
-		U32_ITEM(cpg->u32_list_len) = dma_pool_alloc(cpg->u32_pool,
-				GFP_KERNEL, &U32_ITEM_DMA(cpg->u32_list_len));
-		if (!U32_ITEM((cpg->u32_list_len)))
-			return -ENOMEM;
-	}
-	for (; cpg->u32_list_len > nelem; cpg->u32_list_len--)
-		dma_pool_free(cpg->u32_pool, U32_ITEM(cpg->u32_list_len - 1),
-				U32_ITEM_DMA(cpg->u32_list_len - 1));
-
-	/* ignore size decreases but those to zero */
-	if (!nelem) {
-		kfree(cpg->u32_list);
-		cpg->u32_list = 0;
-	}
-	return 0;
-}
-
 static inline void mv_dma_u32_copy(dma_addr_t dst, u32 val)
 {
-	if (unlikely(cpg->u32_usage == cpg->u32_list_len)
-	    && set_u32_poolsize(cpg->u32_list_len << 1)) {
-		printk(KERN_ERR MV_CESA "resizing poolsize to %d failed\n",
-				cpg->u32_list_len << 1);
+	if (unlikely(DESCLIST_FULL(cpg->desclist)) &&
+	    set_dma_desclist_size(&cpg->desclist, cpg->desclist.length << 1)) {
+		printk(KERN_ERR MV_CESA "resizing poolsize to %lu failed\n",
+				cpg->desclist.length << 1);
 		return;
 	}
-	*(U32_ITEM(cpg->u32_usage)) = val;
-	mv_dma_memcpy(dst, U32_ITEM_DMA(cpg->u32_usage), sizeof(u32));
-	cpg->u32_usage++;
+	*ITEM(cpg->desclist.usage) = val;
+	mv_dma_memcpy(dst, ITEM_DMA(cpg->desclist.usage), sizeof(u32));
+	cpg->desclist.usage++;
 }
 
 static inline bool
@@ -651,7 +612,7 @@ static void dequeue_complete_req(void)
 	struct crypto_async_request *req = cpg->cur_req;
 
 	mv_dma_clear();
-	cpg->u32_usage = 0;
+	cpg->desclist.usage = 0;
 
 	BUG_ON(cpg->eng_st != ENGINE_W_DEQUEUE);
 
@@ -1335,13 +1296,12 @@ static int mv_probe(struct platform_device *pdev)
 	cp->sa_sram_dma = dma_map_single(&pdev->dev, &cp->sa_sram,
 			sizeof(struct sec_accel_sram), DMA_TO_DEVICE);
 
-	cpg->u32_pool = dma_pool_create("CESA U32 Item Pool",
-			&pdev->dev, sizeof(u32), MV_DMA_ALIGN, 0);
-	if (!cpg->u32_pool) {
+	if (init_dma_desclist(&cpg->desclist, &pdev->dev,
+				sizeof(u32), MV_DMA_ALIGN, 0)) {
 		ret = -ENOMEM;
 		goto err_mapping;
 	}
-	if (set_u32_poolsize(MV_DMA_INIT_POOLSIZE)) {
+	if (set_dma_desclist_size(&cpg->desclist, MV_DMA_INIT_POOLSIZE)) {
 		printk(KERN_ERR MV_CESA "failed to initialise poolsize\n");
 		goto err_pool;
 	}
@@ -1350,7 +1310,7 @@ static int mv_probe(struct platform_device *pdev)
 	if (ret) {
 		printk(KERN_WARNING MV_CESA
 		       "Could not register aes-ecb driver\n");
-		goto err_poolsize;
+		goto err_pool;
 	}
 
 	ret = crypto_register_alg(&mv_aes_alg_cbc);
@@ -1377,10 +1337,8 @@ static int mv_probe(struct platform_device *pdev)
 	return 0;
 err_unreg_ecb:
 	crypto_unregister_alg(&mv_aes_alg_ecb);
-err_poolsize:
-	set_u32_poolsize(0);
 err_pool:
-	dma_pool_destroy(cpg->u32_pool);
+	fini_dma_desclist(&cpg->desclist);
 err_mapping:
 	dma_unmap_single(&pdev->dev, cpg->sa_sram_dma,
 			sizeof(struct sec_accel_sram), DMA_TO_DEVICE);
@@ -1412,8 +1370,7 @@ static int mv_remove(struct platform_device *pdev)
 	free_irq(cp->irq, cp);
 	dma_unmap_single(&pdev->dev, cpg->sa_sram_dma,
 			sizeof(struct sec_accel_sram), DMA_TO_DEVICE);
-	set_u32_poolsize(0);
-	dma_pool_destroy(cpg->u32_pool);
+	fini_dma_desclist(&cpg->desclist);
 	memset(cp->sram, 0, cp->sram_size);
 	iounmap(cp->sram);
 	iounmap(cp->reg);
