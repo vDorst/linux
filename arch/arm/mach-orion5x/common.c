@@ -181,9 +181,42 @@ void __init orion5x_xor_init(void)
 /*****************************************************************************
  * Cryptographic Engines and Security Accelerator (CESA)
  ****************************************************************************/
+static struct resource orion_idma_res[] = {
+	{
+		.name	= "regs deco",
+		.start	= ORION5X_IDMA_PHYS_BASE + 0xA00,
+		.end	= ORION5X_IDMA_PHYS_BASE + 0xA24,
+		.flags	= IORESOURCE_MEM,
+	}, {
+		.name	= "regs control and error",
+		.start	= ORION5X_IDMA_PHYS_BASE + 0x800,
+		.end	= ORION5X_IDMA_PHYS_BASE + 0x8CF,
+		.flags	= IORESOURCE_MEM,
+	}, {
+		.name   = "crypto error",
+		.start  = IRQ_ORION5X_IDMA_ERR,
+		.end    = IRQ_ORION5X_IDMA_ERR,
+		.flags  = IORESOURCE_IRQ,
+	},
+};
+
+static u64 mv_idma_dma_mask = DMA_BIT_MASK(32);
+
+static struct platform_device orion_idma_device = {
+	.name		= "mv_idma",
+	.id		= -1,
+	.dev		= {
+		.dma_mask		= &mv_idma_dma_mask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+	},
+	.num_resources	= ARRAY_SIZE(orion_idma_res),
+	.resource	= orion_idma_res,
+};
+
 static void __init orion5x_crypto_init(void)
 {
 	orion5x_setup_sram_win();
+	platform_device_register(&orion_idma_device);
 	orion_crypto_init(ORION5X_CRYPTO_PHYS_BASE, ORION5X_SRAM_PHYS_BASE,
 			  SZ_8K, IRQ_ORION5X_CESA);
 }
