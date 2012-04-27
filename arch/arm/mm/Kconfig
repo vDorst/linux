@@ -155,7 +155,7 @@ config CPU_ARM925T
 	select CPU_TLB_V4WBI if MMU
  	help
  	  The ARM925T is a mix between the ARM920T and ARM926T, but with
-	  different instruction and data caches. It is used in TI's OMAP
+	  different instruction and data caches. It is used in the TI OMAP
  	  device family.
 
  	  Say Y if you want support for the ARM925T processor.
@@ -384,7 +384,7 @@ config CPU_FEROCEON_OLD_ID
 
 # Marvell PJ4
 config CPU_PJ4
-	bool
+	bool "Support Marvell PJ4 processor"
 	select CPU_V7
 	select ARM_THUMBEE
 

@@ -32,6 +32,7 @@ extern "C" {
 #define IS_VALID_FMT(fmt) IS_TV(fmt)
 #ifdef FORMAT_PC
 #define IS_PC(fmt) (fmt >= HDMITX_VFMT_PC_MIN && fmt <= HDMITX_VFMT_PC_MAX)
+#undef IS_VALID_FMT
 #define IS_VALID_FMT(fmt) (IS_TV(fmt)||IS_PC(fmt))
 #endif
 #define VIC2REG_LOOP(array,idx) do {                           \
