@@ -434,6 +434,10 @@ static struct inet6_dev * ipv6_add_dev(struct net_device *dev)
 	/* Join all-node multicast group */
 	ipv6_dev_mc_inc(dev, &in6addr_linklocal_allnodes);
 
+	/* Join all-router multicast group if forwarding is set */
+	if (ndev->cnf.forwarding && (dev->flags & IFF_MULTICAST))
+		ipv6_dev_mc_inc(dev, &in6addr_linklocal_allrouters);
+
 	return ndev;
 }
 
@@ -799,8 +803,7 @@ static void ipv6_del_addr(struct inet6_ifaddr *ifp)
 				ip6_del_rt(rt);
 				rt = NULL;
 			} else if (!(rt->rt6i_flags & RTF_EXPIRES)) {
-				rt->dst.expires = expires;
-				rt->rt6i_flags |= RTF_EXPIRES;
+				rt6_set_expires(rt, expires);
 			}
 		}
 		dst_release(&rt->dst);
@@ -1883,11 +1886,9 @@ void addrconf_prefix_rcv(struct net_device *dev, u8 *opt, int len, bool sllao)
 				rt = NULL;
 			} else if (addrconf_finite_timeout(rt_expires)) {
 				/* not infinity */
-				rt->dst.expires = jiffies + rt_expires;
-				rt->rt6i_flags |= RTF_EXPIRES;
+				rt6_set_expires(rt, jiffies + rt_expires);
 			} else {
-				rt->rt6i_flags &= ~RTF_EXPIRES;
-				rt->dst.expires = 0;
+				rt6_clean_expires(rt);
 			}
 		} else if (valid_lft) {
 			clock_t expires = 0;

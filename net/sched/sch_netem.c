@@ -408,10 +408,8 @@ static int netem_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 	if (q->corrupt && q->corrupt >= get_crandom(&q->corrupt_cor)) {
 		if (!(skb = skb_unshare(skb, GFP_ATOMIC)) ||
 		    (skb->ip_summed == CHECKSUM_PARTIAL &&
-		     skb_checksum_help(skb))) {
-			sch->qstats.drops++;
-			return NET_XMIT_DROP;
-		}
+		     skb_checksum_help(skb)))
+			return qdisc_drop(skb, sch);
 
 		skb->data[net_random() % skb_headlen(skb)] ^= 1<<(net_random() % 8);
 	}
@@ -501,9 +499,8 @@ tfifo_dequeue:
 
 		/* if more time remaining? */
 		if (cb->time_to_send <= psched_get_time()) {
-			skb = qdisc_dequeue_tail(sch);
-			if (unlikely(!skb))
-				goto qdisc_dequeue;
+			__skb_unlink(skb, &sch->q);
+			sch->qstats.backlog -= qdisc_pkt_len(skb);
 
 #ifdef CONFIG_NET_CLS_ACT
 			/*
@@ -539,7 +536,6 @@ deliver:
 		qdisc_watchdog_schedule(&q->watchdog, cb->time_to_send);
 	}
 
-qdisc_dequeue:
 	if (q->qdisc) {
 		skb = q->qdisc->ops->dequeue(q->qdisc);
 		if (skb)

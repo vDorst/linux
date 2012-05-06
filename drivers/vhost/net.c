@@ -238,7 +238,7 @@ static void handle_tx(struct vhost_net *net)
 
 				vq->heads[vq->upend_idx].len = len;
 				ubuf->callback = vhost_zerocopy_callback;
-				ubuf->arg = vq->ubufs;
+				ubuf->ctx = vq->ubufs;
 				ubuf->desc = vq->upend_idx;
 				msg.msg_control = ubuf;
 				msg.msg_controllen = sizeof(ubuf);
@@ -588,7 +588,7 @@ static int vhost_net_release(struct inode *inode, struct file *f)
 
 	vhost_net_stop(n, &tx_sock, &rx_sock);
 	vhost_net_flush(n);
-	vhost_dev_cleanup(&n->dev);
+	vhost_dev_cleanup(&n->dev, false);
 	if (tx_sock)
 		fput(tx_sock->file);
 	if (rx_sock)
