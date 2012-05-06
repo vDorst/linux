@@ -498,6 +498,27 @@ config MAX8997_MUIC
 	  Maxim MAX8997 PMIC.
 	  The MAX8997 MUIC is a USB port accessory detector and switch.
 
+config DOVE_MRVL_BMM
+	tristate "Marvell Buffer management module"
+	default y
+	help
+	  This driver needs to co-work with user space BMM library.
+	  The user space driver can use this driver/library to maintain it's own buffer.
+
+config DOVE_VPU_USE_BMM
+	bool "Dove VPU use BMM"
+	depends on DOVE_MRVL_BMM
+	default y
+	help
+	  Dove VPU use BMM to maintian buffer.
+
+config DOVE_GPU_USE_BMM
+	bool "Dove GPU use BMM"
+	depends on DOVE_MRVL_BMM && DOVE_VPU_USE_BMM
+	default n
+	help
+	  Dove GPU use BMM to maintian buffer.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"

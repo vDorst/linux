@@ -111,4 +111,31 @@ config UIO_PRUSS
 	  To compile this driver as a module, choose M here: the module
 	  will be called uio_pruss.
 
+config UIO_VMETA
+	tristate "Vmeta UIO device driver"
+	depends on UIO && ARCH_DOVE
+	default y
+	help
+	  Userspace IO interface to the Marvell multi-format video
+	  decoder engine.
+
+	  If you compile this as a module, it will be called uio_vmeta.
+
+config UIO_VMETA_POLLING_MODE
+	tristate "Vmeta UIO poll mode"
+	depends on UIO_VMETA
+	default n
+	help
+	  Enable Vmeta interrupt mode by default. If it is set to y, it will be the polling mode.
+
+config UIO_DOVE_VMETA_MEM_SIZE
+	int "VMETA control and data memory size (MB)"
+	depends on UIO_VMETA
+	default 34
+	help
+	  Set the memory size to be reserved for VMETA usage.
+	  Use the following as a guideline:
+	  For video resolutions up to 1280x768 set this to 34 (MB).
+	  For higher resolutions set to 64 (MB).
+
 endif
