@@ -920,7 +920,7 @@ gceSTATUS gckOS_MapMemory(
 	{
 		down_write(&current->mm->mmap_sem);
 
-		mdlMap->vmaAddr = (char *)do_mmap_pgoff(NULL,
+		mdlMap->vmaAddr = (char *)do_mmap/*_pgoff*/(NULL,
 					0L,
 					mdl->numPages * PAGE_SIZE,
 					PROT_READ | PROT_WRITE,
@@ -931,7 +931,7 @@ gceSTATUS gckOS_MapMemory(
 		{
 			gcmkTRACE_ZONE(gcvLEVEL_ERROR,
 				gcvZONE_OS,
-				"gckOS_MapMemory: do_mmap_pgoff error");
+				"gckOS_MapMemory: do_mmap error");
 
 			gcmkTRACE_ZONE(gcvLEVEL_ERROR,
 				gcvZONE_OS,
@@ -1283,7 +1283,7 @@ gceSTATUS gckOS_AllocateNonPagedMemory(
         /* We need to map this to user space. */
         down_write(&current->mm->mmap_sem);
 
-        mdlMap->vmaAddr = (gctSTRING)do_mmap_pgoff(gcvNULL,
+        mdlMap->vmaAddr = (gctSTRING)do_mmap/*_pgoff*/(gcvNULL,
 				0L,
 				mdl->numPages * PAGE_SIZE,
 				PROT_READ | PROT_WRITE,
@@ -1294,7 +1294,7 @@ gceSTATUS gckOS_AllocateNonPagedMemory(
         {
 			gcmkTRACE_ZONE(gcvLEVEL_INFO,
 				gcvZONE_OS,
-				"galcore: do_mmap_pgoff error");
+				"galcore: do_mmap error");
 
 			up_write(&current->mm->mmap_sem);
 
@@ -2692,7 +2692,7 @@ gceSTATUS gckOS_LockPages(
 	{
 		down_write(&current->mm->mmap_sem);
 
-		mdlMap->vmaAddr = (gctSTRING)do_mmap_pgoff(NULL,
+		mdlMap->vmaAddr = (gctSTRING)do_mmap/*_pgoff*/(NULL,
 						0L,
 						mdl->numPages * PAGE_SIZE,
 						PROT_READ | PROT_WRITE,
@@ -2712,7 +2712,7 @@ gceSTATUS gckOS_LockPages(
 		{
 			gcmkTRACE_ZONE(gcvLEVEL_INFO,
 						gcvZONE_OS,
-						"gckOS_LockPages: do_mmap_pgoff error");
+						"gckOS_LockPages: do_mmap error");
 
 			MEMORY_UNLOCK(Os);
 
