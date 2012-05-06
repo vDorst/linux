@@ -17,6 +17,7 @@
 #include <linux/slab.h>
 #include <linux/mbus.h>
 #include <linux/delay.h>
+#include <sound/asoundef.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
@@ -27,11 +28,67 @@
 
 #define KIRKWOOD_I2S_RATES \
 	(SNDRV_PCM_RATE_44100 | \
-	 SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_96000)
+	 SNDRV_PCM_RATE_48000 | \
+	 SNDRV_PCM_RATE_96000)
 #define KIRKWOOD_I2S_FORMATS \
 	(SNDRV_PCM_FMTBIT_S16_LE | \
 	 SNDRV_PCM_FMTBIT_S24_LE | \
-	 SNDRV_PCM_FMTBIT_S32_LE)
+	 SNDRV_PCM_FMTBIT_S32_LE | \
+	 SNDRV_PCM_FMTBIT_IEC958_SUBFRAME_LE | \
+	 SNDRV_PCM_FMTBIT_IEC958_SUBFRAME_BE)
+static inline void kirkwood_set_dco(void __iomem *io, unsigned long rate);
+int kirkwood_i2s_control_iec958_dflt_info(struct snd_kcontrol *kcontrol,
+					  struct snd_ctl_elem_info *uinfo)
+{
+	uinfo->type = SNDRV_CTL_ELEM_TYPE_IEC958;
+	uinfo->count = 1;
+	return 0;
+}
+
+int kirkwood_i2s_control_iec958_dflt_get(struct snd_kcontrol *kcontrol,
+					 struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_dai *cpu_dai = snd_kcontrol_chip(kcontrol);
+	struct kirkwood_dma_data *priv = snd_soc_dai_get_drvdata(cpu_dai);
+	u32 reg;
+
+	reg = readl(priv->io+KIRKWOOD_SPDIF_PLAYCTL);
+	ucontrol->value.iec958.status[0] &=
+		~(IEC958_AES0_PROFESSIONAL | IEC958_AES0_NONAUDIO);
+	if (reg & KIRKWOOD_SPDIF_NON_PCM)
+		ucontrol->value.iec958.status[0] |= IEC958_AES0_NONAUDIO;
+	return 0;
+}
+
+int kirkwood_i2s_control_iec958_dflt_put(struct snd_kcontrol *kcontrol,
+					 struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_dai *cpu_dai = snd_kcontrol_chip(kcontrol);
+	struct kirkwood_dma_data *priv = snd_soc_dai_get_drvdata(cpu_dai);
+	u32 reg, nreg;
+
+	reg  = readl(priv->io+KIRKWOOD_SPDIF_PLAYCTL);
+	nreg = reg & ~(KIRKWOOD_SPDIF_NON_PCM | KIRKWOOD_SPDIF_REG_VALIDITY);
+	if (ucontrol->value.iec958.status[0] & IEC958_AES0_NONAUDIO)
+		nreg |= KIRKWOOD_SPDIF_NON_PCM | KIRKWOOD_SPDIF_REG_VALIDITY;
+	writel(nreg, priv->io+KIRKWOOD_SPDIF_PLAYCTL);
+
+	return (nreg != reg);
+}
+
+const struct snd_kcontrol_new kirkwood_i2s_iec958_controls[] = {
+{
+	.iface =	SNDRV_CTL_ELEM_IFACE_PCM,
+	.name =		SNDRV_CTL_NAME_IEC958("", PLAYBACK, DEFAULT),
+	.access =	SNDRV_CTL_ELEM_ACCESS_READWRITE |
+			SNDRV_CTL_ELEM_ACCESS_VOLATILE,
+	.info =		kirkwood_i2s_control_iec958_dflt_info,
+	.get =		kirkwood_i2s_control_iec958_dflt_get,
+	.put =		kirkwood_i2s_control_iec958_dflt_put,
+},
+};
+EXPORT_SYMBOL(kirkwood_i2s_iec958_controls);
+
 
 static int kirkwood_i2s_set_fmt(struct snd_soc_dai *cpu_dai,
 		unsigned int fmt)
@@ -39,7 +96,6 @@ static int kirkwood_i2s_set_fmt(struct snd_soc_dai *cpu_dai,
 	struct kirkwood_dma_data *priv = snd_soc_dai_get_drvdata(cpu_dai);
 	unsigned long mask;
 	unsigned long value;
-
 	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
 	case SND_SOC_DAIFMT_RIGHT_J:
 		mask = KIRKWOOD_I2S_CTL_RJ;
@@ -94,7 +150,7 @@ static inline void kirkwood_set_dco(void __iomem *io, unsigned long rate)
 	do {
 		cpu_relax();
 		value = readl(io + KIRKWOOD_DCO_SPCR_STATUS);
-		value &= KIRKWOOD_DCO_SPCR_STATUS;
+		value &= KIRKWOOD_DCO_SPCR_STATUS_DCO_LOCK;
 	} while (value == 0);
 }
 
@@ -114,6 +170,9 @@ static int kirkwood_i2s_hw_params(struct snd_pcm_substream *substream,
 	struct kirkwood_dma_data *priv = snd_soc_dai_get_drvdata(dai);
 	unsigned int i2s_reg, reg;
 	unsigned long i2s_value, value;
+	priv->i2s = 1;
+	priv->spdif = 1;
+	priv->iec958 = 0;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		i2s_reg = KIRKWOOD_I2S_PLAYCTL;
@@ -121,6 +180,7 @@ static int kirkwood_i2s_hw_params(struct snd_pcm_substream *substream,
 	} else {
 		i2s_reg = KIRKWOOD_I2S_RECCTL;
 		reg = KIRKWOOD_RECCTL;
+		priv->spdif = 0;
 	}
 
 	/* set dco conf */
@@ -156,6 +216,16 @@ static int kirkwood_i2s_hw_params(struct snd_pcm_substream *substream,
 	case SNDRV_PCM_FORMAT_S32_LE:
 		i2s_value |= KIRKWOOD_I2S_CTL_SIZE_32;
 		value |= KIRKWOOD_PLAYCTL_SIZE_32;
+		priv->spdif = 0;
+		break;
+	case SNDRV_PCM_FORMAT_IEC958_SUBFRAME_LE:
+	case SNDRV_PCM_FORMAT_IEC958_SUBFRAME_BE:
+		if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
+			return -EINVAL;
+		i2s_value |= KIRKWOOD_I2S_CTL_SIZE_16;
+		value |= KIRKWOOD_PLAYCTL_SIZE_16_C;
+		priv->i2s = 0;
+		priv->iec958 = 1;
 		break;
 	default:
 		return -EINVAL;
@@ -208,7 +278,10 @@ static int kirkwood_i2s_play_trigger(struct snd_pcm_substream *substream,
 			value |= KIRKWOOD_PLAYCTL_BURST_32;
 		else
 			value |= KIRKWOOD_PLAYCTL_BURST_128;
-		value |= KIRKWOOD_PLAYCTL_I2S_EN;
+		if (priv->i2s)
+			value |= KIRKWOOD_PLAYCTL_I2S_EN;
+		if (priv->spdif)
+			value |= KIRKWOOD_PLAYCTL_SPDIF_EN;
 		writel(value, priv->io + KIRKWOOD_PLAYCTL);
 		break;
 
@@ -337,22 +410,29 @@ static int kirkwood_i2s_probe(struct snd_soc_dai *dai)
 	struct kirkwood_dma_data *priv = snd_soc_dai_get_drvdata(dai);
 	unsigned long value;
 	unsigned int reg_data;
+	int ret;
 
+	ret = snd_soc_add_dai_controls(dai, kirkwood_i2s_iec958_controls,
+				ARRAY_SIZE(kirkwood_i2s_iec958_controls));
+	if (ret) {
+		dev_err(dai->dev, "unable to add soc card controls\n");
+		return ret;
+	}
 	/* put system in a "safe" state : */
 	/* disable audio interrupts */
 	writel(0xffffffff, priv->io + KIRKWOOD_INT_CAUSE);
 	writel(0, priv->io + KIRKWOOD_INT_MASK);
 
+	reg_data = readl(priv->io + 0x120c);
 	reg_data = readl(priv->io + 0x1200);
 	reg_data &= (~(0x333FF8));
 	reg_data |= 0x111D18;
 	writel(reg_data, priv->io + 0x1200);
-
 	msleep(500);
-
 	reg_data = readl(priv->io + 0x1200);
 	reg_data &= (~(0x333FF8));
 	reg_data |= 0x111D18;
+	msleep(500);
 	writel(reg_data, priv->io + 0x1200);
 
 	/* disable playback/record */
@@ -388,12 +468,14 @@ static struct snd_soc_dai_driver kirkwood_i2s_dai = {
 		.channels_min = 1,
 		.channels_max = 2,
 		.rates = KIRKWOOD_I2S_RATES,
-		.formats = KIRKWOOD_I2S_FORMATS,},
+		.formats = KIRKWOOD_I2S_FORMATS,
+	},
 	.capture = {
 		.channels_min = 1,
 		.channels_max = 2,
 		.rates = KIRKWOOD_I2S_RATES,
-		.formats = KIRKWOOD_I2S_FORMATS,},
+		.formats = KIRKWOOD_I2S_FORMATS,
+	},
 	.ops = &kirkwood_i2s_dai_ops,
 };
 
