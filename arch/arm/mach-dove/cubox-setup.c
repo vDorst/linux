@@ -214,7 +214,7 @@ static struct platform_device cubox_ir = {
  ****************************************************************************/
 static struct gpio_led cubox_led_pins[] = {
 	{
-		.name			= "cubox:ref:health",
+		.name			= "cubox:red:health",
 		.default_trigger	= "default-on",
 		.gpio			= 18,
 		.active_low		= 1,
