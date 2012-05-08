@@ -122,6 +122,7 @@ static struct platform_device dove_vmeta = {
 	.dev		= {
 		.dma_mask		= &vmeta_dmamask,
 		.coherent_dma_mask	= DMA_BIT_MASK(32),
+		.platform_data		= NULL,
 	},
 	.resource	= dove_vmeta_resources,
 	.num_resources	= ARRAY_SIZE(dove_vmeta_resources),
@@ -489,8 +490,9 @@ static struct platform_device dove_sdio0 = {
 	.num_resources	= ARRAY_SIZE(dove_sdio0_resources),
 };
 
-void __init dove_sdio0_init(void)
+void __init dove_sdio0_init(struct sdhci_dove_platform_data *sdio0_data)
 {
+	dove_sdio0.dev.platform_data = sdio0_data;
 	platform_device_register(&dove_sdio0);
 }
 
@@ -512,13 +514,15 @@ static struct platform_device dove_sdio1 = {
 	.dev		= {
 		.dma_mask		= &sdio_dmamask,
 		.coherent_dma_mask	= DMA_BIT_MASK(32),
+		.platform_data		= NULL,
 	},
 	.resource	= dove_sdio1_resources,
 	.num_resources	= ARRAY_SIZE(dove_sdio1_resources),
 };
 
-void __init dove_sdio1_init(void)
+void __init dove_sdio1_init(struct sdhci_dove_platform_data *sdio1_data)
 {
+	dove_sdio1.dev.platform_data = sdio1_data;
 	platform_device_register(&dove_sdio1);
 }
 

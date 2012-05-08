@@ -75,8 +75,8 @@ static void __init cm_a510_init(void)
 	dove_ehci0_init();
 	dove_ehci1_init();
 	dove_sata_init(&cm_a510_sata_data);
-	dove_sdio0_init();
-	dove_sdio1_init();
+	dove_sdio0_init(NULL);
+	dove_sdio1_init(NULL);
 	dove_spi0_init();
 	dove_spi1_init();
 	dove_uart0_init();

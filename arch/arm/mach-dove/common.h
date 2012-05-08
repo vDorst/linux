@@ -13,6 +13,7 @@
 
 struct mv643xx_eth_platform_data;
 struct mv_sata_platform_data;
+struct sdhci_dove_platform_data;
 
 extern struct sys_timer dove_timer;
 
@@ -37,8 +38,8 @@ void dove_uart3_init(void);
 void dove_spi0_init(void);
 void dove_spi1_init(void);
 void dove_i2c_init(void);
-void dove_sdio0_init(void);
-void dove_sdio1_init(void);
+void dove_sdio0_init(struct sdhci_dove_platform_data *);
+void dove_sdio1_init(struct sdhci_dove_platform_data *);
 void dove_i2s0_init(void);
 void dove_i2s1_init(void);
 void dove_restart(char, const char *);
