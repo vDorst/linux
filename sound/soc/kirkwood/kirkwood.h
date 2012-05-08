@@ -97,6 +97,14 @@
 #define KIRKWOOD_PLAY_BYTE_INT_COUNT		0x1314
 #define KIRKWOOD_BYTE_INT_COUNT_MASK		0xffffff
 
+#define KIRKWOOD_SPDIF_PLAYCTL			0x2204
+#define KIRKWOOD_SPDIF_NON_PCM			(1<<17)
+#define KIRKWOOD_SPDIF_REG_VALIDITY		(1<<16)
+#define KIRKWOOD_SPDIF_FORCE_PARERR		(1<<4)
+#define KIRKWOOD_SPDIF_MEM_USER_EN		(1<<2)
+#define KIRKWOOD_SPDIF_MEM_VALIDITY_EN		(1<<1)
+#define KIRKWOOD_SPDIF_BLOCK_START_MODE		(1<<0)
+
 #define KIRKWOOD_I2S_PLAYCTL			0x2508
 #define KIRKWOOD_I2S_RECCTL			0x2408
 #define KIRKWOOD_I2S_CTL_JUST_MASK		(0xf<<26)
@@ -123,6 +131,9 @@ struct kirkwood_dma_data {
 	void __iomem *io;
 	int irq;
 	int burst;
+	int i2s;
+	int spdif;
+	int iec958;
 };
 
 #endif

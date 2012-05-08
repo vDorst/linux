@@ -23,11 +23,14 @@
 #include <linux/spi/orion_spi.h>
 #include <linux/spi/flash.h>
 #include <linux/gpio.h>
+#include <linux/leds.h>
 #include <video/dovefb.h>
 #include <video/dovefbreg.h>
+#include <media/gpio-ir-recv.h>
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include <mach/dove.h>
+#include <mach/sdhci.h>
 #include "common.h"
 #include "mpp.h"
 
@@ -38,6 +41,9 @@ static struct mv643xx_eth_platform_data cubox_ge00_data = {
 static struct mv_sata_platform_data cubox_sata_data = {
 	.n_ports        = 1,
 };
+static struct sdhci_dove_platform_data cubox_sdio0_data = {
+	.gpio_cd	= 12,
+};
 
 /*****************************************************************************
  * GPIO setup
@@ -46,6 +52,9 @@ static unsigned int cubox_mpp_list[] __initdata = {
 	MPP1_GPIO1,     /* USB Power Enable */
 	MPP2_GPIO2,     /* USB over-current indication */
 	MPP3_GPIO3,     /* micro button beneath eSata port */
+	MPP12_GPIO12,   /* sdio0 card detect */
+	MPP18_GPIO18,   /* red LED */
+	MPP19_GPIO19,   /* IR sensor */
 #if 0
 	/* Not supported for now - FIXME */
 	MPP27_GPIO27,     /* HDMI interrupt */
@@ -177,6 +186,55 @@ static int __init cubox_pci_init(void)
 subsys_initcall(cubox_pci_init);
 
 /*****************************************************************************
+ * SPDIF
+ ****************************************************************************/
+static struct platform_device cubox_spdif = {
+	.name   = "kirkwood-spdif-audio",
+	.id     = 1,
+};
+
+/*****************************************************************************
+ * IR
+ ****************************************************************************/
+static struct gpio_ir_recv_platform_data cubox_ir_data = {
+	.gpio_nr = 19,
+	.active_low = 1,
+};
+
+static struct platform_device cubox_ir = {
+	.name   = "gpio-rc-recv",
+	.id     = -1,
+	.dev    = {
+		.platform_data  = &cubox_ir_data,
+	}
+};
+
+/*****************************************************************************
+ * LED
+ ****************************************************************************/
+static struct gpio_led cubox_led_pins[] = {
+	{
+		.name			= "cubox:red:health",
+		.default_trigger	= "default-on",
+		.gpio			= 18,
+		.active_low		= 1,
+	},
+};
+
+static struct gpio_led_platform_data cubox_led_data = {
+	.leds		= cubox_led_pins,
+	.num_leds	= ARRAY_SIZE(cubox_led_pins),
+};
+
+static struct platform_device cubox_leds = {
+	.name	= "leds-gpio",
+	.id	= -1,
+	.dev	= {
+		.platform_data	= &cubox_led_data,
+	}
+};
+
+/*****************************************************************************
  * Board Init
  ****************************************************************************/
 static void __init cubox_init(void)
@@ -192,19 +250,24 @@ static void __init cubox_init(void)
 	dove_ehci0_init();
 	dove_ehci1_init();
 	dove_sata_init(&cubox_sata_data);
-	dove_sdio0_init();
-	dove_sdio1_init();
+	dove_sdio0_init(&cubox_sdio0_data);
+	dove_sdio1_init(NULL);
+	dove_i2s1_init();
 	dove_cubox_clcd_init();
+	dove_vmeta_init();
 	dove_gpu_init();
 	dove_spi0_init();
 	dove_spi1_init();
 	dove_uart0_init();
 	dove_uart1_init();
 	dove_i2c_init();
+	platform_device_register(&cubox_spdif);
 	i2c_register_board_info(0, dove_cubox_i2c_bus0_devs,
 				ARRAY_SIZE(dove_cubox_i2c_bus0_devs));
 	spi_register_board_info(cubox_spi_flash_info,
 				ARRAY_SIZE(cubox_spi_flash_info));
+	platform_device_register(&cubox_leds);
+	platform_device_register(&cubox_ir);
 }
 
 MACHINE_START(CUBOX, "SolidRun CuBox")

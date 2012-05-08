@@ -31,6 +31,7 @@
 #include <plat/ehci-orion.h>
 #include <plat/common.h>
 #include <plat/addr-map.h>
+#include <plat/audio.h>
 #include "common.h"
 #include "clock.h"
 
@@ -113,12 +114,15 @@ static struct resource dove_vmeta_resources[] = {
 	},
 };
 
+static u64 vmeta_dmamask = DMA_BIT_MASK(32);
+
 static struct platform_device dove_vmeta = {
 	.name		= "ap510-vmeta",
 	.id		= 0,
 	.dev		= {
-		.dma_mask		= DMA_BIT_MASK(32),
+		.dma_mask		= &vmeta_dmamask,
 		.coherent_dma_mask	= DMA_BIT_MASK(32),
+		.platform_data		= NULL,
 	},
 	.resource	= dove_vmeta_resources,
 	.num_resources	= ARRAY_SIZE(dove_vmeta_resources),
@@ -228,6 +232,85 @@ int dove_gpu_get_memory_size(void)
 }
 EXPORT_SYMBOL(dove_gpu_get_memory_size);
 #endif
+
+/*****************************************************************************
+ * Audio - Uses same audio IP as in Kirkwood
+ ****************************************************************************/
+static struct resource dove_i2s0_resources[] = {
+	[0] = {
+		.start  = DOVE_AUD0_PHYS_BASE,
+		.end    = DOVE_AUD0_PHYS_BASE + SZ_16K - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start  = IRQ_DOVE_I2S0,
+		.end    = IRQ_DOVE_I2S0,
+		.flags  = IORESOURCE_IRQ,
+	},
+};
+
+static struct kirkwood_asoc_platform_data dove_i2s0_data = {
+	.burst       = 128,
+};
+
+static struct platform_device dove_i2s0_device = {
+	.name           = "kirkwood-i2s",
+	.id             = 0,
+	.num_resources  = ARRAY_SIZE(dove_i2s0_resources),
+	.resource       = dove_i2s0_resources,
+	.dev            = {
+		.platform_data  = &dove_i2s0_data,
+	},
+};
+
+static struct platform_device dove_pcm0_device = {
+	.name           = "kirkwood-pcm-audio",
+	.id             = 0,
+};
+
+void __init dove_i2s0_init(void)
+{
+	platform_device_register(&dove_i2s0_device);
+	platform_device_register(&dove_pcm0_device);
+}
+
+static struct resource dove_i2s1_resources[] = {
+	[0] = {
+		.start  = DOVE_AUD1_PHYS_BASE,
+		.end    = DOVE_AUD1_PHYS_BASE + SZ_16K - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start  = IRQ_DOVE_I2S1,
+		.end    = IRQ_DOVE_I2S1,
+		.flags  = IORESOURCE_IRQ,
+	},
+};
+
+static struct kirkwood_asoc_platform_data dove_i2s1_data = {
+	.burst       = 128,
+};
+
+static struct platform_device dove_i2s1_device = {
+	.name           = "kirkwood-i2s",
+	.id             = 1,
+	.num_resources  = ARRAY_SIZE(dove_i2s1_resources),
+	.resource       = dove_i2s1_resources,
+	.dev            = {
+		.platform_data  = &dove_i2s1_data,
+	},
+};
+
+static struct platform_device dove_pcm1_device = {
+	.name           = "kirkwood-pcm-audio",
+	.id             = 1,
+};
+
+void __init dove_i2s1_init(void)
+{
+	platform_device_register(&dove_i2s1_device);
+	platform_device_register(&dove_pcm1_device);
+}
 
 /*****************************************************************************
  * EHCI0
@@ -407,8 +490,9 @@ static struct platform_device dove_sdio0 = {
 	.num_resources	= ARRAY_SIZE(dove_sdio0_resources),
 };
 
-void __init dove_sdio0_init(void)
+void __init dove_sdio0_init(struct sdhci_dove_platform_data *sdio0_data)
 {
+	dove_sdio0.dev.platform_data = sdio0_data;
 	platform_device_register(&dove_sdio0);
 }
 
@@ -430,13 +514,15 @@ static struct platform_device dove_sdio1 = {
 	.dev		= {
 		.dma_mask		= &sdio_dmamask,
 		.coherent_dma_mask	= DMA_BIT_MASK(32),
+		.platform_data		= NULL,
 	},
 	.resource	= dove_sdio1_resources,
 	.num_resources	= ARRAY_SIZE(dove_sdio1_resources),
 };
 
-void __init dove_sdio1_init(void)
+void __init dove_sdio1_init(struct sdhci_dove_platform_data *sdio1_data)
 {
+	dove_sdio1.dev.platform_data = sdio1_data;
 	platform_device_register(&dove_sdio1);
 }
 
