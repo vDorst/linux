@@ -23,6 +23,7 @@
 #include <linux/spi/orion_spi.h>
 #include <linux/spi/flash.h>
 #include <linux/gpio.h>
+#include <linux/leds.h>
 #include <video/dovefb.h>
 #include <video/dovefbreg.h>
 #include <media/gpio-ir-recv.h>
@@ -47,6 +48,7 @@ static unsigned int cubox_mpp_list[] __initdata = {
 	MPP1_GPIO1,     /* USB Power Enable */
 	MPP2_GPIO2,     /* USB over-current indication */
 	MPP3_GPIO3,     /* micro button beneath eSata port */
+	MPP18_GPIO18,   /* red LED */
 	MPP19_GPIO19,   /* IR sensor */
 #if 0
 	/* Not supported for now - FIXME */
@@ -203,6 +205,31 @@ static struct platform_device cubox_ir = {
 };
 
 /*****************************************************************************
+ * LED
+ ****************************************************************************/
+static struct gpio_led cubox_led_pins[] = {
+	{
+		.name			= "cubox:ref:health",
+		.default_trigger	= "default-on",
+		.gpio			= 18,
+		.active_low		= 1,
+	},
+};
+
+static struct gpio_led_platform_data cubox_led_data = {
+	.leds		= cubox_led_pins,
+	.num_leds	= ARRAY_SIZE(cubox_led_pins),
+};
+
+static struct platform_device cubox_leds = {
+	.name	= "leds-gpio",
+	.id	= -1,
+	.dev	= {
+		.platform_data	= &cubox_led_data,
+	}
+};
+
+/*****************************************************************************
  * Board Init
  ****************************************************************************/
 static void __init cubox_init(void)
@@ -234,6 +261,7 @@ static void __init cubox_init(void)
 				ARRAY_SIZE(dove_cubox_i2c_bus0_devs));
 	spi_register_board_info(cubox_spi_flash_info,
 				ARRAY_SIZE(cubox_spi_flash_info));
+	platform_device_register(&cubox_leds);
 	platform_device_register(&cubox_ir);
 }
 
