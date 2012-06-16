@@ -131,9 +131,7 @@ struct kirkwood_dma_data {
 	void __iomem *io;
 	int irq;
 	int burst;
-	int i2s;
-	int spdif;
-	int iec958;
+	struct clk *clk;
 };
 
 #endif
