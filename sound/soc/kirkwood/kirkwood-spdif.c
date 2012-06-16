@@ -15,6 +15,9 @@
 #include <linux/interrupt.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <sound/core.h>
+#include <sound/jack.h>
+#include <sound/pcm.h>
 #include <sound/soc.h>
 #include <plat/audio.h>
 #include <asm/mach-types.h>
