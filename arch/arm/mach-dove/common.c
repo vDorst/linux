@@ -15,6 +15,10 @@
 #include <linux/pci.h>
 #include <linux/clk-provider.h>
 #include <linux/ata_platform.h>
+#include <linux/mtd/nand.h>
+#include <linux/dma-mapping.h>
+#include <linux/clk-private.h>
+#include <linux/spinlock.h>
 #include <linux/gpio.h>
 #include <linux/timex.h>
 #include <asm/page.h>
@@ -24,9 +28,12 @@
 #include <asm/mach/time.h>
 #include <asm/mach/pci.h>
 #include <mach/dove.h>
+#include <mach/pm.h>
 #include <mach/bridge-regs.h>
 #include <asm/mach/arch.h>
 #include <linux/irq.h>
+#include <plat/clock.h>
+#include <plat/audio.h>
 #include <plat/time.h>
 #include <plat/ehci-orion.h>
 #include <plat/common.h>
@@ -35,6 +42,7 @@
 #include "common.h"
 #include "clock.h"
 
+unsigned int dove_tclk;
 static unsigned int dove_vmeta_memory_start;
 static unsigned int dove_gpu_memory_start;
 
@@ -122,7 +130,7 @@ static struct platform_device dove_vmeta = {
 	.dev		= {
 		.dma_mask		= &vmeta_dmamask,
 		.coherent_dma_mask	= DMA_BIT_MASK(32),
-		.platform_data		= NULL,
+// Sebastian removed this one		.platform_data		= NULL,
 	},
 	.resource	= dove_vmeta_resources,
 	.num_resources	= ARRAY_SIZE(dove_vmeta_resources),
@@ -233,80 +241,63 @@ int dove_gpu_get_memory_size(void)
 EXPORT_SYMBOL(dove_gpu_get_memory_size);
 #endif
 
+
 /*****************************************************************************
- * Audio - Uses same audio IP as in Kirkwood
+ * CLK tree
  ****************************************************************************/
-static struct resource dove_i2s0_resources[] = {
-	[0] = {
-		.start  = DOVE_AUD0_PHYS_BASE,
-		.end    = DOVE_AUD0_PHYS_BASE + SZ_16K - 1,
-		.flags  = IORESOURCE_MEM,
-	},
-	[1] = {
-		.start  = IRQ_DOVE_I2S0,
-		.end    = IRQ_DOVE_I2S0,
-		.flags  = IORESOURCE_IRQ,
-	},
+static struct orion_clk_gate dove_clk_gates[] = {
+	ORION_CLK_GATE("usb0", CLOCK_GATING_BIT_USB0),
+	ORION_CLK_GATE("usb1", CLOCK_GATING_BIT_USB1),
+	ORION_CLK_GATE("sdio0", CLOCK_GATING_BIT_SDIO0),
+	ORION_CLK_GATE("sdio1", CLOCK_GATING_BIT_SDIO1),
+	ORION_CLK_GATE("nand", CLOCK_GATING_BIT_NAND),
+	ORION_CLK_GATE("camera", CLOCK_GATING_BIT_CAMERA),
+	ORION_CLK_GATE("i2s0", CLOCK_GATING_BIT_I2S0),
+	ORION_CLK_GATE("i2s1", CLOCK_GATING_BIT_I2S1),
+	ORION_CLK_GATE("crypto", CLOCK_GATING_BIT_CRYPTO),
+	ORION_CLK_GATE("ac97", CLOCK_GATING_BIT_AC97),
+	ORION_CLK_GATE("pdma", CLOCK_GATING_BIT_PDMA),
+	ORION_CLK_GATE("xor0", CLOCK_GATING_BIT_XOR0),
+	ORION_CLK_GATE("xor1", CLOCK_GATING_BIT_XOR1),
+	ORION_CLK_GATE("gephy0", CLOCK_GATING_BIT_GIGA_PHY),
+	ORION_CLK_PHYGATE("ge0", CLOCK_GATING_BIT_GBE, "gephy0"),
+	ORION_CLK_PHYGATE("sata", CLOCK_GATING_BIT_SATA, SATA_VIRT_BASE),
+	ORION_CLK_PHYGATE("pex0", CLOCK_GATING_BIT_PCIE0, DOVE_PCIE0_VIRT_BASE),
+	ORION_CLK_PHYGATE("pex1", CLOCK_GATING_BIT_PCIE1, DOVE_PCIE1_VIRT_BASE),
 };
 
-static struct kirkwood_asoc_platform_data dove_i2s0_data = {
-	.burst       = 128,
+static struct orion_clk_clock dove_clk_clocks[] = {
+	ORION_CLK_CLOCK(NULL, "orion_spi.0", "tclk"),
+	ORION_CLK_CLOCK(NULL, "orion_spi.1", "tclk"),
+	ORION_CLK_CLOCK(NULL, "orion_wdt", "tclk"),
+	ORION_CLK_CLOCK(NULL, "orion-ehci.0", "usb0"),
+	ORION_CLK_CLOCK(NULL, "orion-ehci.1", "usb1"),
+	ORION_CLK_CLOCK(NULL, "sdhci-dove.0", "sdio0"),
+	ORION_CLK_CLOCK(NULL, "sdhci-dove.1", "sdio1"),
+	ORION_CLK_CLOCK(NULL, "dove-nand", "nand"),
+	ORION_CLK_CLOCK(NULL, "cafe1000-ccic.0", "camera"),
+	ORION_CLK_CLOCK(NULL, "kirkwood-i2s.0", "i2s0"),
+	ORION_CLK_CLOCK(NULL, "kirkwood-i2s.1", "i2s1"),
+	ORION_CLK_CLOCK(NULL, "mv_crypto", "crypto"),
+	ORION_CLK_CLOCK(NULL, "dove-ac97", "ac97"),
+	ORION_CLK_CLOCK(NULL, "dove-pdma", "pdma"),
+	ORION_CLK_CLOCK(NULL, MV_XOR_SHARED_NAME ".0", "xor0"),
+	ORION_CLK_CLOCK(NULL, MV_XOR_SHARED_NAME ".1", "xor1"),
+	ORION_CLK_CLOCK(NULL, MV643XX_ETH_NAME ".0", "ge0"),
+	ORION_CLK_CLOCK("0", "sata_mv.0", "sata"),
+	ORION_CLK_CLOCK("0", "pcie", "pex0"),
+	ORION_CLK_CLOCK("1", "pcie", "pex1"),
 };
 
-static struct platform_device dove_i2s0_device = {
-	.name           = "kirkwood-i2s",
-	.id             = 0,
-	.num_resources  = ARRAY_SIZE(dove_i2s0_resources),
-	.resource       = dove_i2s0_resources,
-	.dev            = {
-		.platform_data  = &dove_i2s0_data,
-	},
+static struct orion_clk_platform_data dove_clk_data = {
+	.iocgc = (void __iomem *)CLOCK_GATING_CONTROL,
+	.gates = dove_clk_gates,
+	.num_gates = ARRAY_SIZE(dove_clk_gates),
+	.clocks = dove_clk_clocks,
+	.num_clocks = ARRAY_SIZE(dove_clk_clocks),
 };
 
-static struct platform_device dove_pcm0_device = {
-	.name           = "kirkwood-pcm-audio",
-	.id             = 0,
-};
-
-void __init dove_i2s0_init(void)
-{
-	platform_device_register(&dove_i2s0_device);
-	platform_device_register(&dove_pcm0_device);
-}
-
-static struct resource dove_i2s1_resources[] = {
-	[0] = {
-		.start  = DOVE_AUD1_PHYS_BASE,
-		.end    = DOVE_AUD1_PHYS_BASE + SZ_16K - 1,
-		.flags  = IORESOURCE_MEM,
-	},
-	[1] = {
-		.start  = IRQ_DOVE_I2S1,
-		.end    = IRQ_DOVE_I2S1,
-		.flags  = IORESOURCE_IRQ,
-	},
-};
-
-static struct kirkwood_asoc_platform_data dove_i2s1_data = {
-	.burst       = 128,
-};
-
-static struct platform_device dove_i2s1_device = {
-	.name           = "kirkwood-i2s",
-	.id             = 1,
-	.num_resources  = ARRAY_SIZE(dove_i2s1_resources),
-	.resource       = dove_i2s1_resources,
-	.dev            = {
-		.platform_data  = &dove_i2s1_data,
-	},
-};
-
-static struct platform_device dove_pcm1_device = {
-	.name           = "kirkwood-pcm-audio",
-	.id             = 1,
-};
-
-void __init dove_i2s1_init(void)
+void __init dove_clk_init(void)
 {
 	platform_device_register(&dove_i2s1_device);
 	platform_device_register(&dove_pcm1_device);
@@ -438,7 +429,7 @@ void __init dove_init_early(void)
 	orion_time_set_base(TIMER_VIRT_BASE);
 }
 
-static int get_tclk(void)
+static unsigned int __init dove_find_tclk(void)
 {
 	/* use DOVE_RESET_SAMPLE_HI/LO to detect tclk */
 	return 166666667;
@@ -446,8 +437,9 @@ static int get_tclk(void)
 
 static void __init dove_timer_init(void)
 {
+	dove_tclk = dove_find_tclk();
 	orion_time_init(BRIDGE_VIRT_BASE, BRIDGE_INT_TIMER1_CLR,
-			IRQ_DOVE_BRIDGE, get_tclk());
+			IRQ_DOVE_BRIDGE, dove_tclk);
 }
 
 struct sys_timer dove_timer = {
@@ -495,6 +487,7 @@ static struct platform_device dove_sdio0 = {
 	.dev		= {
 		.dma_mask		= &sdio_dmamask,
 		.coherent_dma_mask	= DMA_BIT_MASK(32),
+		.platform_data		= NULL,
 	},
 	.resource	= dove_sdio0_resources,
 	.num_resources	= ARRAY_SIZE(dove_sdio0_resources),
@@ -536,6 +529,88 @@ void __init dove_sdio1_init(struct sdhci_dove_platform_data *sdio1_data)
 	platform_device_register(&dove_sdio1);
 }
 
+/*****************************************************************************
+ * Audio
+ ****************************************************************************/
+static struct resource dove_i2s0_resources[] = {
+	[0] = {
+		.start  = DOVE_AUD0_PHYS_BASE,
+		.end    = DOVE_AUD0_PHYS_BASE + SZ_16K - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start  = IRQ_DOVE_I2S0,
+		.end    = IRQ_DOVE_I2S0,
+		.flags  = IORESOURCE_IRQ,
+	},
+};
+
+static struct kirkwood_asoc_platform_data dove_i2s0_data = {
+	.burst       = 128,
+};
+
+static struct platform_device dove_i2s0_device = {
+	.name           = "kirkwood-i2s",
+	.id             = 0,
+	.num_resources  = ARRAY_SIZE(dove_i2s0_resources),
+	.resource       = dove_i2s0_resources,
+	.dev            = {
+		.platform_data  = &dove_i2s0_data,
+	},
+};
+
+static struct platform_device dove_pcm0_device = {
+	.name           = "kirkwood-pcm-audio",
+	.id             = 0,
+};
+
+void __init dove_i2s0_init(void)
+{
+	platform_device_register(&dove_i2s0_device);
+	platform_device_register(&dove_pcm0_device);
+}
+
+static struct resource dove_i2s1_resources[] = {
+	[0] = {
+		.start  = DOVE_AUD1_PHYS_BASE,
+		.end    = DOVE_AUD1_PHYS_BASE + SZ_16K - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start  = IRQ_DOVE_I2S1,
+		.end    = IRQ_DOVE_I2S1,
+		.flags  = IORESOURCE_IRQ,
+	},
+};
+
+static struct kirkwood_asoc_platform_data dove_i2s1_data = {
+	.burst       = 128,
+};
+
+static struct platform_device dove_i2s1_device = {
+	.name           = "kirkwood-i2s",
+	.id             = 1,
+	.num_resources  = ARRAY_SIZE(dove_i2s1_resources),
+	.resource       = dove_i2s1_resources,
+	.dev            = {
+		.platform_data  = &dove_i2s1_data,
+	},
+};
+
+static struct platform_device dove_pcm1_device = {
+	.name           = "kirkwood-pcm-audio",
+	.id             = 1,
+};
+
+void __init dove_i2s1_init(void)
+{
+	platform_device_register(&dove_i2s1_device);
+	platform_device_register(&dove_pcm1_device);
+}
+
+/*****************************************************************************
+ * General
+ ****************************************************************************/
 void __init dove_init(void)
 {
 	int tclk;
@@ -550,6 +625,9 @@ void __init dove_init(void)
 	tauros2_init();
 #endif
 	dove_setup_cpu_mbus();
+	
+	/* Setup root of clk tree */
+	dove_clk_init();
 
 	/* Setup root of clk tree */
 	clk_init();
