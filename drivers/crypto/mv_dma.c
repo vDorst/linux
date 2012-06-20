@@ -16,6 +16,8 @@
 #include <linux/clk.h>
 #include <linux/slab.h>
 #include <linux/platform_device.h>
+#include <linux/mbus.h>
+#include <plat/mv_dma.h>
 
 #include "mv_dma.h"
 #include "dma_desclist.h"
@@ -46,6 +48,10 @@ struct mv_dma_priv {
 
 #define ITEM(x)		((struct mv_dma_desc *)DESCLIST_ITEM(tpg.desclist, x))
 #define ITEM_DMA(x)	DESCLIST_ITEM_DMA(tpg.desclist, x)
+
+typedef u32 (*print_and_clear_irq)(void);
+typedef void (*deco_win_setter)(void __iomem *, int, int, int, int, int);
+
 
 static inline void wait_for_dma_idle(void)
 {
@@ -265,11 +271,76 @@ irqreturn_t mv_dma_int(int irq, void *priv)
 	return (handled ? IRQ_HANDLED : IRQ_NONE);
 }
 
+static void tdma_set_deco_win(void __iomem *regs, int chan,
+		int target, int attr, int base, int size)
+{
+	u32 val;
+
+	writel(DMA_DECO_ADDR_MASK(base), regs + TDMA_DECO_BAR(chan));
+
+	val = TDMA_WCR_ENABLE;
+	val |= TDMA_WCR_TARGET(target);
+	val |= TDMA_WCR_ATTR(attr);
+	val |= DMA_DECO_SIZE_MASK(size);
+	writel(val, regs + TDMA_DECO_WCR(chan));
+}
+
+static void idma_set_deco_win(void __iomem *regs, int chan,
+		int target, int attr, int base, int size)
+{
+	u32 val;
+
+	/* setup window parameters */
+	val = IDMA_BAR_TARGET(target);
+	val |= IDMA_BAR_ATTR(attr);
+	val |= DMA_DECO_ADDR_MASK(base);
+	writel(val, regs + IDMA_DECO_BAR(chan));
+
+	/* window size goes to a separate register */
+	writel(DMA_DECO_SIZE_MASK(size), regs + IDMA_DECO_SIZE(chan));
+
+	/* set the channel to enabled */
+	val = readl(regs + IDMA_DECO_ENABLE);
+	val &= ~(1 << chan);
+	writel(val, regs + IDMA_DECO_ENABLE);
+
+	/* allow RW access from all other windows */
+	writel(0xffff, regs + IDMA_DECO_PROT(chan));
+}
+
+static void setup_mbus_windows(void __iomem *regs, struct mv_dma_pdata *pdata,
+		deco_win_setter win_setter)
+{
+	int chan;
+	const struct mbus_dram_target_info *dram;
+
+	dram = mv_mbus_dram_info();
+	for (chan = 0; chan < dram->num_cs; chan++) {
+		const struct mbus_dram_window *cs = &dram->cs[chan];
+
+		(*win_setter)(regs, chan, dram->mbus_dram_target_id,
+				cs->mbus_attr, cs->base, cs->size);
+	}
+	if (pdata) {
+		/* Need to add a decoding window for SRAM access.
+		 * This is needed only on IDMA, since every address
+		 * is looked up. But not allowed on TDMA, since it
+		 * errors if source and dest are in different windows.
+		 *
+		 * Size is in 64k granularity, max SRAM size is 8k -
+		 * so a single "unit" easily suffices.
+		 */
+		(*win_setter)(regs, chan, pdata->sram_target_id,
+				pdata->sram_attr, pdata->sram_base, 1 << 16);
+	}
+}
+
 /* initialise the global tpg structure */
-static int mv_init_engine(struct platform_device *pdev,
-		u32 ctrl_init_val, u32 (*print_and_clear_irq)(void))
+static int mv_init_engine(struct platform_device *pdev, u32 ctrl_init_val,
+		print_and_clear_irq pc_irq, deco_win_setter win_setter)
 {
 	struct resource *res;
+	void __iomem *deco;
 	int rc;
 
 	if (tpg.dev) {
@@ -277,7 +348,17 @@ static int mv_init_engine(struct platform_device *pdev,
 		return -ENXIO;
 	}
 	tpg.dev = &pdev->dev;
-	tpg.print_and_clear_irq = print_and_clear_irq;
+	tpg.print_and_clear_irq = pc_irq;
+
+	/* setup address decoding */
+	res = platform_get_resource_byname(pdev,
+			IORESOURCE_MEM, "regs deco");
+	if (!res)
+		return -ENXIO;
+	if (!(deco = ioremap(res->start, resource_size(res))))
+		return -ENOMEM;
+	setup_mbus_windows(deco, pdev->dev.platform_data, win_setter);
+	iounmap(deco);
 
 	/* get register start address */
 	res = platform_get_resource_byname(pdev,
@@ -366,7 +447,7 @@ static int mv_probe_tdma(struct platform_device *pdev)
 	int rc;
 
 	rc = mv_init_engine(pdev, TDMA_CTRL_INIT_VALUE,
-			&tdma_print_and_clear_irq);
+			&tdma_print_and_clear_irq, &tdma_set_deco_win);
 	if (rc)
 		return rc;
 
@@ -384,7 +465,7 @@ static int mv_probe_idma(struct platform_device *pdev)
 	int rc;
 
 	rc = mv_init_engine(pdev, IDMA_CTRL_INIT_VALUE,
-			&idma_print_and_clear_irq);
+			&idma_print_and_clear_irq, &idma_set_deco_win);
 	if (rc)
 		return rc;
 

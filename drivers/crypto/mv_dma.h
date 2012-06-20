@@ -69,6 +69,29 @@
 #define TDMA_INT_DATA_ERROR	(1 << 3)
 #define TDMA_INT_ALL		0x0f
 
+/* address decoding registers, starting at "regs deco" */
+#define TDMA_DECO_BAR(chan)		(0x00 + (chan) * 8)
+#define TDMA_DECO_WCR(chan)		(0x04 + (chan) * 8)
+
+#define IDMA_DECO_BAR(chan)		TDMA_DECO_BAR(chan)
+#define IDMA_DECO_SIZE(chan)		(0x04 + (chan) * 8)
+#define IDMA_DECO_REMAP(chan)		(0x60 + (chan) * 4)
+#define IDMA_DECO_PROT(chan)		(0x70 + (chan) * 4)
+#define IDMA_DECO_ENABLE		0x80 /* bit field, zero enables */
+
+/* decoding address and size masks */
+#define DMA_DECO_ADDR_MASK(x)		((x) & 0xffff0000)
+#define DMA_DECO_SIZE_MASK(x)		DMA_DECO_ADDR_MASK((x) - 1)
+
+/* TDMA_DECO_WCR fields */
+#define TDMA_WCR_ENABLE			0x01
+#define TDMA_WCR_TARGET(x)		(((x) & 0x0f) << 4)
+#define TDMA_WCR_ATTR(x)		(((x) & 0xff) << 8)
+
+/* IDMA_DECO_BAR fields */
+#define IDMA_BAR_TARGET(x)		((x) & 0x0f)
+#define IDMA_BAR_ATTR(x)		(((x) & 0xff) << 8)
+
 /* offsets of registers, starting at "regs control and error" */
 #define TDMA_BYTE_COUNT		0x00
 #define TDMA_SRC_ADDR		0x10

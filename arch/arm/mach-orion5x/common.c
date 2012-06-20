@@ -202,12 +202,19 @@ static struct resource orion_idma_res[] = {
 
 static u64 mv_idma_dma_mask = DMA_BIT_MASK(32);
 
+static struct mv_dma_pdata mv_idma_pdata = {
+	.sram_target_id	= TARGET_SRAM,
+	.sram_attr	= 0,
+	.sram_base	= ORION5X_SRAM_PHYS_BASE,
+};
+
 static struct platform_device orion_idma_device = {
 	.name		= "mv_idma",
 	.id		= -1,
 	.dev		= {
 		.dma_mask		= &mv_idma_dma_mask,
 		.coherent_dma_mask	= DMA_BIT_MASK(32),
+		.platform_data		= &mv_idma_pdata,
 	},
 	.num_resources	= ARRAY_SIZE(orion_idma_res),
 	.resource	= orion_idma_res,
