@@ -9,6 +9,7 @@
 #include <crypto/aes.h>
 #include <crypto/algapi.h>
 #include <linux/crypto.h>
+#include <linux/delay.h>
 #include <linux/dma-mapping.h>
 #include <linux/dmapool.h>
 #include <linux/interrupt.h>
@@ -180,6 +181,7 @@ struct mv_req_hash_ctx {
 static void mv_completion_timer_callback(unsigned long unused)
 {
 	int active = readl(cpg->reg + SEC_ACCEL_CMD) & SEC_CMD_EN_SEC_ACCL0;
+	int count = 10;
 
 	printk(KERN_ERR MV_CESA
 	       "completion timer expired (CESA %sactive), cleaning up.\n",
@@ -187,8 +189,13 @@ static void mv_completion_timer_callback(unsigned long unused)
 
 	del_timer(&cpg->completion_timer);
 	writel(SEC_CMD_DISABLE_SEC, cpg->reg + SEC_ACCEL_CMD);
-	while(readl(cpg->reg + SEC_ACCEL_CMD) & SEC_CMD_DISABLE_SEC)
-		printk(KERN_INFO MV_CESA "%s: waiting for engine finishing\n", __func__);
+	while((readl(cpg->reg + SEC_ACCEL_CMD) & SEC_CMD_DISABLE_SEC) && count--) {
+		mdelay(100);
+	}
+	if (count < 0) {
+		printk(KERN_ERR MV_CESA
+		       "%s: engine reset timed out!\n", __func__);
+	}
 	cpg->eng_st = ENGINE_W_DEQUEUE;
 	wake_up_process(cpg->queue_th);
 }
