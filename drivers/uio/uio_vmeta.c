@@ -480,8 +480,6 @@ static int vmeta_unlocked_ioctl(struct uio_info *info, unsigned int cmd,
 {
 	int ret = 0;
 	struct vmeta_instance *priv = info->priv;
-	printk ("Call %s with ioctl code 0x%x\n",__func__, cmd);
-	printk ("For refence 0x%x\n",VMETA_CMD_POWER_ON);
 	switch (cmd) {
 	case VMETA_CMD_POWER_ON:
 		ret = vmeta_power_on(priv);

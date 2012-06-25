@@ -717,7 +717,6 @@ static long uio_unlocked_ioctl(struct file *filep, unsigned int cmd,
 	struct uio_listener *listener = filep->private_data;
 	struct uio_device *idev = listener->dev;
 	int ret = 0;
-	printk ("idev->info = 0x%p\n",idev->info);
 	if (idev->info) {
 		if (idev->info->unlocked_ioctl) {
 			if (!try_module_get(idev->owner))
