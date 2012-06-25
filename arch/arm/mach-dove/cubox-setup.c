@@ -20,11 +20,10 @@
 #include <linux/i2c.h>
 #include <linux/pci.h>
 #include <linux/spi/spi.h>
-#include <linux/spi/orion_spi.h>
 #include <linux/spi/flash.h>
 #include <linux/gpio.h>
 #include <linux/leds.h>
-#include <linux/clk/si5351.h>
+#include <linux/si5351.h>
 #include <linux/clk-private.h>
 #include <video/dovefb.h>
 #include <video/dovefbreg.h>
