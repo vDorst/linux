@@ -20,7 +20,7 @@
 #include <linux/err.h>
 #include <linux/clk-private.h>
 #include <linux/clkdev.h>
-#include <linux/clk/si5351.h>
+#include <linux/si5351.h>
 #include <asm/div64.h>
 #include "clk-si5351.h"
 
@@ -249,9 +249,9 @@ static unsigned long si5351_vxco_recalc_rate(struct clk_hw *hw,
 	return 0;
 }
 
-static int si5351_vxco_set_rate(struct clk_hw *hw, unsigned long rate)
+static int si5351_vxco_set_rate(struct clk_hw *hw, unsigned long rate, unsigned long parent)
 {
-	si5351_dbg("enter\n");
+	si5351_dbg("enter %s - rate = 0x%lx, parent = 0x%lx\n",__FUNCTION__, rate, parent);
 	return 0;
 }
 
@@ -458,7 +458,7 @@ static long si5351_pll_round_rate(struct clk_hw *hw, unsigned long rate,
 	return rate;
 }
 
-static int si5351_pll_set_rate(struct clk_hw *hw, unsigned long rate)
+static int si5351_pll_set_rate(struct clk_hw *hw, unsigned long rate, unsigned long parent)
 {
 	struct si5351_hw_data *hwdata = 
 		container_of(hw, struct si5351_hw_data, hw);
@@ -800,7 +800,7 @@ static long si5351_clkout_round_rate(struct clk_hw *hw, unsigned long rate,
 	return rate;
 }
 
-static int si5351_clkout_set_rate(struct clk_hw *hw, unsigned long rate)
+static int si5351_clkout_set_rate(struct clk_hw *hw, unsigned long rate, unsigned long parent)
 {
 	struct si5351_hw_data *hwdata = 
 		container_of(hw, struct si5351_hw_data, hw);
@@ -1026,7 +1026,9 @@ static __devinit int si5351_i2c_probe(
 	struct clk *clk;
 	u8 num_parents, num_clocks;
 	int i, ret;
+	struct clk_init_data si5351_init_data;
 
+	memset (&si5351_init_data, 0, sizeof (struct clk_init_data));
 	sidata = devm_kzalloc(&client->dev, sizeof(struct si5351_driver_data), 
 			      GFP_KERNEL);
 	if (sidata == NULL) {
@@ -1041,17 +1043,25 @@ static __devinit int si5351_i2c_probe(
 	sidata->variant = drvdata->variant;
 
 	si5351_init(sidata);
-
-	if (!clk_register(&client->dev, "xtal", &si5351_xtal_ops, 
-			  &sidata->xtal, NULL, 0, CLK_IS_ROOT)) {
+	sidata->xtal.init = &si5351_init_data;
+	memset (&si5351_init_data, 0, sizeof (struct clk_init_data));
+	si5351_init_data.name = "xtal";
+	si5351_init_data.ops = &si5351_xtal_ops;
+	si5351_init_data.flags = CLK_IS_ROOT;
+	if (!clk_register(&client->dev, &sidata->xtal)) {
 		dev_err(&client->dev, "unable to register xtal\n");
 		ret = -EINVAL;
 		goto si5351_probe_error_register;
 	}
 
 	if (sidata->variant == SI5351_VARIANT_C) {
-		if (!clk_register(&client->dev, "clkin", &si5351_clkin_ops, 
-				  &sidata->clkin, NULL, 0, CLK_IS_ROOT)) {
+		sidata->clkin.init = &si5351_init_data;
+		memset (&si5351_init_data, 0, sizeof (struct clk_init_data));
+		si5351_init_data.name = "clkin";
+		si5351_init_data.ops = &si5351_clkin_ops;
+		si5351_init_data.flags = CLK_IS_ROOT;
+		if (!clk_register(&client->dev, &sidata->clkin)) {
+
 			dev_err(&client->dev, "unable to register clkin\n");
 			ret = -EINVAL;
 			goto si5351_probe_error_register;
@@ -1062,9 +1072,15 @@ static __devinit int si5351_i2c_probe(
 
 	sidata->pll[0].num = 0;
 	sidata->pll[0].sidata = sidata;
-	clk = clk_register(&client->dev, "plla", &si5351_pll_ops, 
-			   &sidata->pll[0].hw, si5351_common_pll_parents, 
-			   num_parents, 0);
+	sidata->pll[0].hw.init = &si5351_init_data;
+	memset (&si5351_init_data, 0, sizeof (struct clk_init_data));
+	si5351_init_data.name = "plla";
+	si5351_init_data.ops = &si5351_pll_ops;
+	si5351_init_data.flags = 0;
+	si5351_init_data.parent_names = si5351_common_pll_parents; /* Warning on this */
+	si5351_init_data.num_parents = num_parents;
+
+	clk = clk_register(&client->dev, &sidata->pll[0].hw);
 	if (IS_ERR(clk)) {
 		dev_err(&client->dev, "unable to register pll a\n");
 		ret = -EINVAL;
@@ -1077,18 +1093,28 @@ static __devinit int si5351_i2c_probe(
 	sidata->pll[1].num = 1;
 	sidata->pll[1].sidata = sidata;
 	if (sidata->variant == SI5351_VARIANT_B) {
-		clk = clk_register(&client->dev, "pllb", &si5351_vxco_ops, 
-				   &sidata->pll[1].hw, si5351_common_pll_parents, 
-				   num_parents, CLK_IS_ROOT);
+		sidata->pll[1].hw.init = &si5351_init_data;
+		memset (&si5351_init_data, 0, sizeof (struct clk_init_data));
+		si5351_init_data.name = "pllb";
+		si5351_init_data.ops = &si5351_vxco_ops;
+		si5351_init_data.flags = CLK_IS_ROOT;
+		si5351_init_data.parent_names = si5351_common_pll_parents; /* Warning on this */
+		si5351_init_data.num_parents = num_parents;
+		clk = clk_register(&client->dev, &sidata->pll[1].hw);
 		if (IS_ERR(clk)) {
 			dev_err(&client->dev, "unable to register vxco pll\n");
 			ret = -EINVAL;
 			goto si5351_probe_error_register;
 		}
 	} else {
-		clk = clk_register(&client->dev, "pllb", &si5351_pll_ops, 
-				   &sidata->pll[1].hw, si5351_common_pll_parents, 
-				   num_parents, 0);
+		sidata->pll[1].hw.init = &si5351_init_data;
+		memset (&si5351_init_data, 0, sizeof (struct clk_init_data));
+		si5351_init_data.name = "pllb";
+		si5351_init_data.ops = &si5351_pll_ops;
+		si5351_init_data.flags = 0;
+		si5351_init_data.parent_names = si5351_common_pll_parents; /* Warning on this */
+		si5351_init_data.num_parents = num_parents;
+		clk = clk_register(&client->dev, &sidata->pll[1].hw);
 		if (IS_ERR(clk)) {
 			dev_err(&client->dev, "unable to register pll b\n");
 			ret = -EINVAL;
@@ -1104,11 +1130,14 @@ static __devinit int si5351_i2c_probe(
 	for(i=0; i<num_clocks; i++) {
 		sidata->clkout[i].num = i;
 		sidata->clkout[i].sidata = sidata;
-		clk = clk_register(&client->dev, si5351_clkout_names[i], 
-				   &si5351_clkout_ops, 
-				   &sidata->clkout[i].hw, 
-				   si5351_common_clkout_parents, num_parents, 
-				   CLK_SET_RATE_GATE);
+		sidata->clkout[i].hw.init = &si5351_init_data;
+		memset (&si5351_init_data, 0, sizeof (struct clk_init_data));
+		si5351_init_data.name = si5351_clkout_names[i];
+		si5351_init_data.ops = &si5351_clkout_ops;
+		si5351_init_data.flags = CLK_SET_RATE_GATE;
+		si5351_init_data.parent_names = si5351_common_clkout_parents; /* Warning on this */
+		si5351_init_data.num_parents = num_parents;
+		clk = clk_register(&client->dev, &sidata->clkout[i].hw);
 		if (IS_ERR(clk)) {
 			dev_err(&client->dev, "unable to register %s\n", 
 				si5351_clkout_names[i]);

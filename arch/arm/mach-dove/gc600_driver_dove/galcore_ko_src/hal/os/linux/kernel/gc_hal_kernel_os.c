@@ -920,7 +920,7 @@ gceSTATUS gckOS_MapMemory(
 	{
 		down_write(&current->mm->mmap_sem);
 
-		mdlMap->vmaAddr = (char *)do_mmap/*_pgoff*/(NULL,
+		mdlMap->vmaAddr = (char *)do_mmap_pgoff(NULL,
 					0L,
 					mdl->numPages * PAGE_SIZE,
 					PROT_READ | PROT_WRITE,
@@ -1283,7 +1283,7 @@ gceSTATUS gckOS_AllocateNonPagedMemory(
         /* We need to map this to user space. */
         down_write(&current->mm->mmap_sem);
 
-        mdlMap->vmaAddr = (gctSTRING)do_mmap/*_pgoff*/(gcvNULL,
+        mdlMap->vmaAddr = (gctSTRING)do_mmap_pgoff(gcvNULL,
 				0L,
 				mdl->numPages * PAGE_SIZE,
 				PROT_READ | PROT_WRITE,
@@ -2692,7 +2692,7 @@ gceSTATUS gckOS_LockPages(
 	{
 		down_write(&current->mm->mmap_sem);
 
-		mdlMap->vmaAddr = (gctSTRING)do_mmap/*_pgoff*/(NULL,
+		mdlMap->vmaAddr = (gctSTRING)do_mmap_pgoff(NULL,
 						0L,
 						mdl->numPages * PAGE_SIZE,
 						PROT_READ | PROT_WRITE,

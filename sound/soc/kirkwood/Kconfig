@@ -3,8 +3,11 @@ config SND_KIRKWOOD_SOC
 	depends on ARCH_KIRKWOOD || ARCH_DOVE
 	help
 	  Say Y or M if you want to add support for codecs attached to
-	  the Kirkwood or Dove I2S or PCM interface. You will also need to select the
+	  the Kirkwood I2S interface. You will also need to select the
 	  audio interfaces to support below.
+
+config SND_KIRKWOOD_SOC_I2S
+	tristate
 
 config SND_KIRKWOOD_SOC_SPDIF
 	tristate "SoC Audio support for Kirkwood generic S/PDIF"
@@ -14,9 +17,6 @@ config SND_KIRKWOOD_SOC_SPDIF
 	help
 	  Say Y if you want to add support for SoC audio on
 	  generic S/PDIF.
-
-config SND_KIRKWOOD_SOC_I2S
-	tristate
 
 config SND_KIRKWOOD_SOC_OPENRD
 	tristate "SoC Audio support for Kirkwood Openrd Client"
