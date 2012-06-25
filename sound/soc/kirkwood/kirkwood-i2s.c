@@ -41,8 +41,8 @@
 	 SNDRV_PCM_FMTBIT_IEC958_SUBFRAME_BE)
 
 static inline void kirkwood_set_dco(void __iomem *io, unsigned long rate);
-int kirkwood_i2s_control_iec958_dflt_info(struct snd_kcontrol *kcontrol,
-					  struct snd_ctl_elem_info *uinfo)
+
+static void kirkwood_i2s_dump_spdif(struct kirkwood_dma_data *priv)
 {
 	u32 reg;
 
@@ -69,7 +69,7 @@ static void kirkwood_i2s_dump_iec958(struct snd_aes_iec958 *iec)
 	       (iec->status[0] & IEC958_AES0_NONAUDIO) ? 1 : 0);
 }
 
-int kirkwood_i2s_control_iec958_default_info(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_info *uinfo)
+int kirkwood_i2s_control_iec958_dflt_info(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_info *uinfo)
 {
 	printk(">>> %s\n", __FUNCTION__);
 
