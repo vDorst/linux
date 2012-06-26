@@ -19,9 +19,11 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+#include <linux/err.h>
 #include <linux/io.h>
 #include <linux/module.h>
 #include <linux/gpio.h>
+#include <linux/clk.h>
 #include <linux/mmc/host.h>
 #include <mach/sdhci.h>
 
@@ -108,6 +110,12 @@ static int __devinit sdhci_dove_probe(struct platform_device *pdev)
 	pltfm_host->priv = plat;
 
 	if (plat) {
+		/* Not all platforms can gate the clock, so it is not
+		   an error if the clock does not exists. */
+		plat->clk = clk_get(&pdev->dev, NULL);
+		if (!IS_ERR(plat->clk))
+			clk_prepare_enable(plat->clk);
+
 		ret = gpio_request(plat->gpio_cd, "sdhci-cd");
 		if (ret) {
 			dev_err(mmc_dev(host->mmc), "carddetect gpio request failed\n");
@@ -139,9 +147,13 @@ static int __devexit sdhci_dove_remove(struct platform_device *pdev)
 	struct sdhci_host *host = platform_get_drvdata(pdev);
 	struct sdhci_dove_platform_data *plat = pdev->dev.platform_data;
 
-	if (plat && gpio_is_valid(plat->gpio_cd)) {
-		free_irq(gpio_to_irq(plat->gpio_cd), host);
-		gpio_free(plat->gpio_cd);
+	if (plat) {
+		if (gpio_is_valid(plat->gpio_cd)) {
+			free_irq(gpio_to_irq(plat->gpio_cd), host);
+			gpio_free(plat->gpio_cd);
+		}
+		if (!IS_ERR(plat->clk))
+			clk_disable_unprepare(plat->clk);
 	}
 	return 0;
 }

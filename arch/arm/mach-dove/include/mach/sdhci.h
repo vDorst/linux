@@ -18,6 +18,7 @@
 #define __ASM_ARM_ARCH_DOVE_SDHCI_H
 
 struct sdhci_dove_platform_data {
+	struct clk* clk;
 	int gpio_cd;
 };
 
