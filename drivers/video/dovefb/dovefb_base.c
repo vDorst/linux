@@ -1014,7 +1014,7 @@ static int __init dovefb_probe(struct platform_device *pdev)
 	if (IS_ERR(info->clk))
 		dev_notice(&pdev->dev, "cannot get clkdev\n");
 	else
-		clk_enable(info->clk);
+		clk_prepare_enable(info->clk);
 #ifndef MODULE
 	/*
 	 * Get video option from boot args
@@ -1104,7 +1104,7 @@ failed_irq:
 failed:
 
 	if (info && !IS_ERR(info->clk)) {
-		clk_disable(info->clk);
+		clk_disable_unprepare(info->clk);
 		clk_put(info->clk);
 	}
 	platform_set_drvdata(pdev, NULL);
@@ -1167,7 +1167,7 @@ static int dovefb_suspend(struct platform_device *pdev, pm_message_t mesg)
 
 	pdev->dev.power.power_state = mesg;
 	if (!IS_ERR(dfi->clk))
-		clk_disable(dfi->clk);
+		clk_disable_unprepare(dfi->clk);
 	console_unlock();
 
 	return 0;
@@ -1180,7 +1180,7 @@ static int dovefb_resume(struct platform_device *pdev)
 
 	console_lock();
 	if (!IS_ERR(dfi->clk))
-		clk_enable(dfi->clk);
+		clk_prepare_enable(dfi->clk);
 
 	if (dovefb_enable_lcd0(pdev)) {
 		printk(KERN_INFO "dovefb_resume(): "

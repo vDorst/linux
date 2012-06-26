@@ -140,6 +140,9 @@ static void set_clock_divider(struct dovefb_layer_info *dfli,
 	/*
 	 * 1. Set up reference clock speed.
 	 */
+
+	printk("%s : setup reference clk to %u\n", __FUNCTION__, needed_pixclk);
+
 	clk_set_rate(info->clk, needed_pixclk);
 	/*
 	 * 2. Calc LCD internal divider
