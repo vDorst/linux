@@ -195,6 +195,7 @@ static void mv_completion_timer_callback(unsigned long unused)
 	if (count < 0) {
 		printk(KERN_ERR MV_CESA
 		       "%s: engine reset timed out!\n", __func__);
+		BUG();
 	}
 	cpg->eng_st = ENGINE_W_DEQUEUE;
 	wake_up_process(cpg->queue_th);

@@ -35,6 +35,7 @@
 #include <plat/time.h>
 #include <plat/common.h>
 #include <plat/addr-map.h>
+#include <plat/mv_dma.h>
 #include "common.h"
 
 /*****************************************************************************
@@ -203,7 +204,7 @@ static struct resource orion_idma_res[] = {
 static u64 mv_idma_dma_mask = DMA_BIT_MASK(32);
 
 static struct mv_dma_pdata mv_idma_pdata = {
-	.sram_target_id	= TARGET_SRAM,
+	.sram_target_id	= 5,
 	.sram_attr	= 0,
 	.sram_base	= ORION5X_SRAM_PHYS_BASE,
 };

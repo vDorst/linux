@@ -318,6 +318,8 @@ static void setup_mbus_windows(void __iomem *regs, struct mv_dma_pdata *pdata,
 	for (chan = 0; chan < dram->num_cs; chan++) {
 		const struct mbus_dram_window *cs = &dram->cs[chan];
 
+		printk(KERN_INFO MV_DMA "window at bar%d: target %d, attr %d, base %x, size %x\n",
+				chan, dram->mbus_dram_target_id, cs->mbus_attr, cs->base, cs->size);
 		(*win_setter)(regs, chan, dram->mbus_dram_target_id,
 				cs->mbus_attr, cs->base, cs->size);
 	}
@@ -330,6 +332,8 @@ static void setup_mbus_windows(void __iomem *regs, struct mv_dma_pdata *pdata,
 		 * Size is in 64k granularity, max SRAM size is 8k -
 		 * so a single "unit" easily suffices.
 		 */
+		printk(KERN_INFO MV_DMA "window at bar%d: target %d, attr %d, base %x, size %x\n",
+				chan, pdata->sram_target_id, pdata->sram_attr, pdata->sram_base, 1 << 16);
 		(*win_setter)(regs, chan, pdata->sram_target_id,
 				pdata->sram_attr, pdata->sram_base, 1 << 16);
 	}
