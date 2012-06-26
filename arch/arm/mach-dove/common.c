@@ -47,7 +47,6 @@
 unsigned int dove_tclk;
 static unsigned int dove_vmeta_memory_start;
 static unsigned int dove_gpu_memory_start;
-static int get_tclk(void);
 
 /*****************************************************************************
  * I/O Address Mapping
@@ -246,7 +245,6 @@ EXPORT_SYMBOL(dove_gpu_get_memory_size);
  * CLK tree
  ****************************************************************************/
 static struct orion_clk_gate dove_clk_gates[] = {
-#if 0
 	ORION_CLK_GATE("usb0", CLOCK_GATING_BIT_USB0),
 	ORION_CLK_GATE("usb1", CLOCK_GATING_BIT_USB1),
 	ORION_CLK_GATE("sdio0", CLOCK_GATING_BIT_SDIO0),
@@ -265,7 +263,6 @@ static struct orion_clk_gate dove_clk_gates[] = {
 	ORION_CLK_PHYGATE("sata", CLOCK_GATING_BIT_SATA, SATA_VIRT_BASE),
 	ORION_CLK_PHYGATE("pex0", CLOCK_GATING_BIT_PCIE0, DOVE_PCIE0_VIRT_BASE),
 	ORION_CLK_PHYGATE("pex1", CLOCK_GATING_BIT_PCIE1, DOVE_PCIE1_VIRT_BASE),
-#endif
 };
 
 static struct orion_clk_clock dove_clk_clocks[] = {
@@ -299,18 +296,9 @@ static struct orion_clk_platform_data dove_clk_data = {
 	.num_clocks = ARRAY_SIZE(dove_clk_clocks),
 };
 
-/*****************************************************************************
- * CLK tree
- ****************************************************************************/
-static struct clk *tclk;
-
-static void __init clk_init(void)
+void __init dove_clk_init(void)
 {
-	tclk = clk_register_fixed_rate(NULL, "tclk", NULL, CLK_IS_ROOT,
-				       get_tclk());
-
-	orion_clkdev_init(tclk);
-	orion_clk_init(&dove_clk_data, get_tclk());
+	orion_clk_init(&dove_clk_data, dove_tclk);
 }
 
 /*****************************************************************************
@@ -369,7 +357,7 @@ void __init dove_sata_init(struct mv_sata_platform_data *sata_data)
 void __init dove_uart0_init(void)
 {
 	orion_uart0_init(DOVE_UART0_VIRT_BASE, DOVE_UART0_PHYS_BASE,
-			 IRQ_DOVE_UART_0, tclk);
+			 IRQ_DOVE_UART_0);
 }
 
 /*****************************************************************************
@@ -378,7 +366,7 @@ void __init dove_uart0_init(void)
 void __init dove_uart1_init(void)
 {
 	orion_uart1_init(DOVE_UART1_VIRT_BASE, DOVE_UART1_PHYS_BASE,
-			 IRQ_DOVE_UART_1, tclk);
+			 IRQ_DOVE_UART_1);
 }
 
 /*****************************************************************************
@@ -387,7 +375,7 @@ void __init dove_uart1_init(void)
 void __init dove_uart2_init(void)
 {
 	orion_uart2_init(DOVE_UART2_VIRT_BASE, DOVE_UART2_PHYS_BASE,
-			 IRQ_DOVE_UART_2, tclk);
+			 IRQ_DOVE_UART_2);
 }
 
 /*****************************************************************************
@@ -396,7 +384,7 @@ void __init dove_uart2_init(void)
 void __init dove_uart3_init(void)
 {
 	orion_uart3_init(DOVE_UART3_VIRT_BASE, DOVE_UART3_PHYS_BASE,
-			 IRQ_DOVE_UART_3, tclk);
+			 IRQ_DOVE_UART_3);
 }
 
 /*****************************************************************************
@@ -428,7 +416,7 @@ void __init dove_init_early(void)
 	orion_time_set_base(TIMER_VIRT_BASE);
 }
 
-static int get_tclk(void)
+static unsigned int dove_find_tclk(void)
 {
 	/* use DOVE_RESET_SAMPLE_HI/LO to detect tclk */
 	return 166666667;
@@ -436,8 +424,9 @@ static int get_tclk(void)
 
 static void __init dove_timer_init(void)
 {
+	dove_tclk = dove_find_tclk();
 	orion_time_init(BRIDGE_VIRT_BASE, BRIDGE_INT_TIMER1_CLR,
-			IRQ_DOVE_BRIDGE, get_tclk());
+			IRQ_DOVE_BRIDGE, dove_tclk);
 }
 
 struct sys_timer dove_timer = {
@@ -611,19 +600,16 @@ void __init dove_i2s1_init(void)
  ****************************************************************************/
 void __init dove_init(void)
 {
-	printk(KERN_INFO "Dove 88AP510 SoC, ");
-	printk(KERN_INFO "TCLK = %dMHz\n", (get_tclk() + 499999) / 1000000);
+	printk(KERN_INFO "Dove 88AP510 SoC, TCLK = %uMHz\n", 
+	       (dove_tclk + 499999) / 1000000);
 
 #ifdef CONFIG_CACHE_TAUROS2
 	tauros2_init();
 #endif
 	dove_setup_cpu_mbus();
-#if 0 // TODO - FIX THE FOLLOWING CODE
-	/* Setup root of clk tree */
+
+	/* Setup clk tree */
 	dove_clk_init();
-#endif
-	/* Setup root of clk tree */
-	clk_init();
 
 	/* internal devices that every board has */
 	dove_rtc_init();
