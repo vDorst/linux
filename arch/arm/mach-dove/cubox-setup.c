@@ -23,7 +23,7 @@
 #include <linux/spi/flash.h>
 #include <linux/gpio.h>
 #include <linux/leds.h>
-#include <linux/si5351.h>
+#include <linux/clk/si5351.h>
 #include <linux/clk-private.h>
 #include <video/dovefb.h>
 #include <video/dovefbreg.h>
@@ -168,6 +168,10 @@ static void cubox_extclk_setup(struct device *clkdev)
 		goto cubox_setup_ext_clocks_err;
 	}
 	clk_add_alias("extclk", "dovefb.0", "clkout0", clkdev);
+
+	printk("%s : add alias 'extclk/dovefb.0' to clkout0 w %lu\n",
+	       __FUNCTION__, clk_get_rate(clk));
+
 	clk_put(clk);
 
 	/* clkout1 : pllA slave, hdmi cec clk */
@@ -250,7 +254,7 @@ static struct i2c_board_info __initdata dove_cubox_i2c_bus0_devs[] = {
  *       SPI0: 4M Flash
  ****************************************************************************/
 static const struct flash_platform_data cubox_spi_flash_data = {
-	.type		= "m25p64",
+	.type		= "w25q32",
 };
 
 static struct spi_board_info __initdata cubox_spi_flash_info[] = {
@@ -337,23 +341,18 @@ static void __init cubox_init(void)
 	dove_init();
 
 	dove_mpp_conf(cubox_mpp_list, cubox_mpp_grp_list, 0, 0);
-	dove_ge00_init(&cubox_ge00_data);
 	dove_hwmon_init();
-	dove_ehci0_init();
-	dove_ehci1_init();
-	dove_sata_init(&cubox_sata_data);
-	dove_sdio0_init(&cubox_sdio0_data);
-	dove_sdio1_init(NULL);
-	
-	dove_cubox_clcd_init();
-	dove_vmeta_init();
-	dove_gpu_init();
+	dove_i2c_init();
 	dove_spi0_init();
 	dove_spi1_init();
 	dove_uart0_init();
 	dove_uart1_init();
-	dove_i2c_init();
-	
+	dove_ehci0_init();
+	dove_ehci1_init();
+	dove_sdio0_init(&cubox_sdio0_data);
+	dove_sdio1_init(NULL);
+	dove_ge00_init(&cubox_ge00_data);
+	dove_sata_init(&cubox_sata_data);
 	i2c_register_board_info(0, dove_cubox_i2c_bus0_devs,
 				ARRAY_SIZE(dove_cubox_i2c_bus0_devs));
 	platform_device_register(&cubox_extclk);
@@ -361,6 +360,8 @@ static void __init cubox_init(void)
 	platform_device_register(&cubox_ir);
 	platform_device_register(&cubox_spdif);
 	dove_i2s1_init();
+	dove_gpu_init();
+	dove_cubox_clcd_init();
 	spi_register_board_info(cubox_spi_flash_info,
 				ARRAY_SIZE(cubox_spi_flash_info));
 }
