@@ -1308,7 +1308,8 @@ static int mv_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto err_mapping;
 	}
-	if (set_dma_desclist_size(&cpg->desclist, MV_DMA_INIT_POOLSIZE)) {
+	ret = set_dma_desclist_size(&cpg->desclist, MV_DMA_INIT_POOLSIZE);
+	if (ret) {
 		printk(KERN_ERR MV_CESA "failed to initialise poolsize\n");
 		goto err_pool;
 	}
@@ -1350,6 +1351,10 @@ err_mapping:
 	dma_unmap_single(&pdev->dev, cpg->sa_sram_dma,
 			sizeof(struct sec_accel_sram), DMA_TO_DEVICE);
 	free_irq(irq, cp);
+	if (!IS_ERR(cp->clk)) {
+		clk_disable_unprepare(cp->clk);
+		clk_put(cp->clk);
+	}
 err_thread:
 	kthread_stop(cp->queue_th);
 err_unmap_sram:

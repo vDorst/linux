@@ -350,23 +350,39 @@ static int mv_init_engine(struct platform_device *pdev, u32 ctrl_init_val,
 	tpg.dev = &pdev->dev;
 	tpg.print_and_clear_irq = pc_irq;
 
+	/* Not all platforms can gate the clock, so it is not
+	   an error if the clock does not exists. */
+	tpg.clk = clk_get(&pdev->dev, NULL);
+	if (!IS_ERR(tpg.clk))
+		clk_prepare_enable(tpg.clk);
+
 	/* setup address decoding */
 	res = platform_get_resource_byname(pdev,
 			IORESOURCE_MEM, "regs deco");
-	if (!res)
-		return -ENXIO;
-	if (!(deco = ioremap(res->start, resource_size(res))))
-		return -ENOMEM;
+	if (!res) {
+		rc = -ENXIO;
+		goto out_disable_clk;
+	}
+	deco = ioremap(res->start, resource_size(res));
+	if (!deco) {
+		rc = -ENOMEM;
+		goto out_disable_clk;
+	}
 	setup_mbus_windows(deco, pdev->dev.platform_data, win_setter);
 	iounmap(deco);
 
 	/* get register start address */
 	res = platform_get_resource_byname(pdev,
 			IORESOURCE_MEM, "regs control and error");
-	if (!res)
-		return -ENXIO;
-	if (!(tpg.reg = ioremap(res->start, resource_size(res))))
-		return -ENOMEM;
+	if (!res) {
+		rc = -ENXIO;
+		goto out_disable_clk;
+	}
+	tpg.reg = ioremap(res->start, resource_size(res));
+	if (!tpg.reg) {
+		rc = -ENOMEM;
+		goto out_disable_clk;
+	}
 
 	/* get the IRQ */
 	tpg.irq = platform_get_irq(pdev, 0);
@@ -374,12 +390,6 @@ static int mv_init_engine(struct platform_device *pdev, u32 ctrl_init_val,
 		rc = -ENXIO;
 		goto out_unmap_reg;
 	}
-
-	/* Not all platforms can gate the clock, so it is not
-	   an error if the clock does not exists. */
-	tpg.clk = clk_get(&pdev->dev, NULL);
-	if (!IS_ERR(tpg.clk))
-		clk_prepare_enable(tpg.clk);
 
 	/* initialise DMA descriptor list */
 	if (init_dma_desclist(&tpg.desclist, tpg.dev,
@@ -421,6 +431,11 @@ out_free_desclist:
 	fini_dma_desclist(&tpg.desclist);
 out_unmap_reg:
 	iounmap(tpg.reg);
+out_disable_clk:
+	if (!IS_ERR(tpg.clk)) {
+		clk_disable_unprepare(tpg.clk);
+		clk_put(tpg.clk);
+	}
 	tpg.dev = NULL;
 	return rc;
 }
@@ -517,4 +532,3 @@ module_exit(mv_dma_exit);
 MODULE_AUTHOR("Phil Sutter <phil.sutter@viprinet.com>");
 MODULE_DESCRIPTION("Support for Marvell's IDMA/TDMA engines");
 MODULE_LICENSE("GPL");
-
