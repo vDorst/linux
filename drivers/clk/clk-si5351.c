@@ -561,11 +561,15 @@ static int si5351_clkout_prepare(struct clk_hw *hw)
 		   hwdata->sidata->clkdis,
 		   (hwdata->sidata->clkdis & (1 << hwdata->num)) ? 1 : 0);
 
-	reg = hwdata->params.ctrl;
-	hwdata->params.ctrl &= ~SI5351_CLK_POWERDOWN;
-	hwdata->params.ctrl &= ~SI5351_CLK_DRIVE_MASK;
-	hwdata->params.ctrl |= SI5351_CLK_DRIVE_8MA;
+	reg  = hwdata->params.ctrl;
+	reg &= ~SI5351_CLK_POWERDOWN;
+	reg &= ~SI5351_CLK_DRIVE_MASK;
+	reg |= SI5351_CLK_DRIVE_8MA;
+
+	si5351_dbg("name = %s, reg = %02x, params.ctrl = %02x\n", hw->clk->name, reg, hwdata->params.ctrl);
+
 	if (reg != hwdata->params.ctrl) {
+		hwdata->params.ctrl = reg;
 		si5351_dbg("name = %s, disable powerdown\n", hw->clk->name);
 		si5351_reg_write(hwdata->sidata, 
 				 SI5351_CLK0_CTRL + hwdata->num, 
