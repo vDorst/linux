@@ -436,6 +436,14 @@ struct sys_timer dove_timer = {
 };
 
 /*****************************************************************************
+ * Watchdog
+ ****************************************************************************/
+void __init dove_wdt_init(void)
+{
+	orion_wdt_init();
+}
+
+/*****************************************************************************
  * XOR 0
  ****************************************************************************/
 void __init dove_xor0_init(void)
@@ -612,9 +620,9 @@ void __init dove_init(void)
 
 	/* Setup clk tree */
 	dove_clk_init();
-
 	/* internal devices that every board has */
 	dove_rtc_init();
+	dove_wdt_init();
 	dove_xor0_init();
 	dove_xor1_init();
 }
