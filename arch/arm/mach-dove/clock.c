@@ -2,8 +2,6 @@
  *  linux/arch/arm/mach-dove/clock.c
  */
 
-/* TODO: Implement the functions below...	*/
-
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
@@ -15,136 +13,16 @@
 #include <linux/platform_device.h>
 #include <linux/delay.h>
 #include <linux/io.h>
+#include <linux/clk-provider.h>
 #include <linux/clkdev.h>
+#include <plat/clock.h>
 #include <mach/pm.h>
 #include <mach/hardware.h>
 #include "clock.h"
 
-#define AXI_BASE_CLK	(2000000000ll)	/* 2000MHz */
+struct clk *nb_pll_clk;
 
-/* downstream clocks*/
-void ds_clks_disable_all(int include_pci0, int include_pci1)
-{
-	u32 ctrl = readl(CLOCK_GATING_CONTROL);
-	u32 io_pwr = readl(IO_PWR_CTRL);
-
-	ctrl &= ~(CLOCK_GATING_USB0_MASK |
-		  CLOCK_GATING_USB1_MASK |
-		  CLOCK_GATING_GBE_MASK  | CLOCK_GATING_GIGA_PHY_MASK |
-#ifndef CONFIG_MV_HAL_DRIVERS_SUPPORT
-		  CLOCK_GATING_SATA_MASK |
-#endif
-		  /* CLOCK_GATING_PCIE0_MASK | */
-		  /* CLOCK_GATING_PCIE1_MASK | */
-		  CLOCK_GATING_SDIO0_MASK |
-		  CLOCK_GATING_SDIO1_MASK |
-		  CLOCK_GATING_NAND_MASK |
-		  CLOCK_GATING_CAMERA_MASK |
-		  CLOCK_GATING_I2S0_MASK |
-		  CLOCK_GATING_I2S1_MASK |
-		  /* CLOCK_GATING_CRYPTO_MASK |*/
-		  CLOCK_GATING_AC97_MASK |
-		  /* CLOCK_GATING_PDMA_MASK |*/
-#ifndef CONFIG_MV_HAL_DRIVERS_SUPPORT
-		  CLOCK_GATING_XOR0_MASK |
-#endif
-		  CLOCK_GATING_XOR1_MASK
-		);
-
-	if (include_pci0) {
-		ctrl &= ~CLOCK_GATING_PCIE0_MASK;
-		io_pwr |= IO_PWR_CTRL_PCIE_PHY0;
-	}
-
-	if (include_pci1) {
-		ctrl &= ~CLOCK_GATING_PCIE1_MASK;
-		io_pwr |= IO_PWR_CTRL_PCIE_PHY1;
-	}
-
-	writel(ctrl, CLOCK_GATING_CONTROL);
-	writel(io_pwr, IO_PWR_CTRL);
-}
-
-static void __ds_clk_enable(struct clk *clk)
-{
-	u32 ctrl;
-
-	if (clk->flags & ALWAYS_ENABLED)
-		return;
-
-	ctrl = readl(CLOCK_GATING_CONTROL);
-	ctrl |= clk->mask;
-	writel(ctrl, CLOCK_GATING_CONTROL);
-	return;
-}
-
-static void __ds_clk_disable(struct clk *clk)
-{
-	u32 ctrl;
-
-	if (clk->flags & ALWAYS_ENABLED)
-		return;
-
-	ctrl = readl(CLOCK_GATING_CONTROL);
-	ctrl &= ~clk->mask;
-	writel(ctrl, CLOCK_GATING_CONTROL);
-}
-
-const struct clkops ds_clk_ops = {
-	.enable		= __ds_clk_enable,
-	.disable	= __ds_clk_disable,
-};
-
-static void __ac97_clk_enable(struct clk *clk)
-{
-	u32 reg, ctrl;
-
-
-	__ds_clk_enable(clk);
-
-	/*
-	 * change BPB to use DCO0
-	 */
-	reg = readl(DOVE_SSP_CTRL_STATUS_1);
-	reg &= ~DOVE_SSP_BPB_CLOCK_SRC_SSP;
-	writel(reg, DOVE_SSP_CTRL_STATUS_1);
-#if 0 /* TODO - Fixme */
-	/* Set DCO clock to 24.576		*/
-	/* make sure I2S Audio 0 is not gated off */
-	ctrl = readl(CLOCK_GATING_CONTROL);
-	if (!(ctrl & CLOCK_GATING_I2S0_MASK))
-		writel(ctrl | CLOCK_GATING_I2S0_MASK, CLOCK_GATING_CONTROL);
-
-	/* update the DCO clock frequency */
-	reg = readl(DOVE_SB_REGS_VIRT_BASE + MV_AUDIO_DCO_CTRL_REG(0));
-	reg = (reg & ~0x3) | 0x2;
-	writel(reg, DOVE_SB_REGS_VIRT_BASE + MV_AUDIO_DCO_CTRL_REG(0));
-
-	/* disable back I2S 0 */
-	if (!(ctrl & CLOCK_GATING_I2S0_MASK))
-		writel(ctrl, CLOCK_GATING_CONTROL);
-#endif
-	return;
-}
-
-static void __ac97_clk_disable(struct clk *clk)
-{
-	u32 ctrl;
-
-	/*
-	 * change BPB to use PLL clock instead of DCO0
-	 */
-	ctrl = readl(DOVE_SSP_CTRL_STATUS_1);
-	ctrl |= DOVE_SSP_BPB_CLOCK_SRC_SSP;
-	writel(ctrl, DOVE_SSP_CTRL_STATUS_1);
-
-	__ds_clk_disable(clk);
-}
-
-const struct clkops ac97_clk_ops = {
-	.enable		= __ac97_clk_enable,
-	.disable	= __ac97_clk_disable,
-};
+#define NB_PLL	(2000000000ll)	/* North Bridge PLL 2000MHz */
 
 /*****************************************************************************
  * GPU and AXI clocks
@@ -226,6 +104,17 @@ static void dove_clocks_set_axi_clock(u32 divider)
 	dove_clocks_set_bits(DOVE_SB_REGS_VIRT_BASE + 0x000D0064, 7, 7, 0);
 }
 
+static int axi_clk_enable(struct clk_hw *hw)
+{
+	/* Dummy */
+	return 0;
+}
+static void axi_clk_disable(struct clk_hw *hw)
+{
+	/* Dummy */
+	return;
+}
+
 static unsigned long gpu_get_clock(struct clk *clk)
 {
 	u32 divider;
@@ -238,7 +127,8 @@ static unsigned long gpu_get_clock(struct clk *clk)
 	return c * 1000000UL;
 }
 
-static int gpu_set_clock(struct clk *clk, unsigned long rate)
+static int gpu_set_clock(struct clk_hw *clk, unsigned long rate,
+			 unsigned long parent)
 {
 	u32 divider;
 
@@ -248,8 +138,19 @@ static int gpu_set_clock(struct clk *clk, unsigned long rate)
 	dove_clocks_set_gpu_clock(divider);
 	return 0;
 }
+static int gpu_clk_enable(struct clk_hw *hw)
+{
+	/* Dummy */
+	return 0;
+}
+static void gpu_clk_disable(struct clk_hw *hw)
+{
+	/* Dummy */
+	return;
+}
 
-static void vmeta_clk_enable(struct clk *clk)
+
+static int vmeta_clk_enable(struct clk_hw *hw)
 {
 	unsigned int reg;
 
@@ -265,9 +166,10 @@ static void vmeta_clk_enable(struct clk *clk)
 	reg = readl(PMU_ISO_CTRL_REG);
 	reg |= PMU_ISO_VIDEO_MASK;
 	writel(reg, PMU_ISO_CTRL_REG);
+	return 0;
 }
 
-static void vmeta_clk_disable(struct clk *clk)
+static void vmeta_clk_disable(struct clk_hw *hw)
 {
 	unsigned int reg;
 
@@ -283,6 +185,7 @@ static void vmeta_clk_disable(struct clk *clk)
 	reg = readl(PMU_PWR_SUPLY_CTRL_REG);
 	reg |= PMU_PWR_VPU_PWR_DWN_MASK;
 	writel(reg, PMU_PWR_SUPLY_CTRL_REG);
+	return;
 }
 
 static unsigned long vmeta_get_clock(struct clk *clk)
@@ -297,7 +200,30 @@ static unsigned long vmeta_get_clock(struct clk *clk)
 	return c * 1000000UL;
 }
 
-static int vmeta_set_clock(struct clk *clk, unsigned long rate)
+unsigned long vmeta_recalc_rate(struct clk_hw *hw, unsigned long parent)
+{
+//	u32 divider;
+//	printk ("Rabeeh - got call for recalc_rate . parent - %ld\n",parent);
+//	divider = dove_clocks_divide(2000, (500000000 /* FIXME */)/1000000);
+//	if (divider != 0) return NB_PLL / divider;
+//	else return 0;
+	return 500000000;
+}
+static long vmeta_round_rate(struct clk_hw *hw, unsigned long rate,
+			    unsigned long *parent)
+{
+	u32 divider;
+	u32 new_clk;
+	printk ("Rabeeh - got call for recalc_rate . parent - %ld\n",*parent);
+
+	divider = dove_clocks_divide(2000, rate/1000000);
+	new_clk = (u32) NB_PLL / divider;
+	if (divider != 0) return new_clk;
+	else return 0;
+}
+
+static int vmeta_set_clock(struct clk_hw *hw, unsigned long rate,
+			   unsigned long parent)
 {
 	u32 divider;
 
@@ -402,7 +328,7 @@ static void calc_best_clock_div(u32 tar_freq, u32 *axi_div,
 				/* (in our case it's divider 3).	    */
 
 	/* Calculate required dividor */
-	req_div = AXI_BASE_CLK;
+	req_div = NB_PLL;
 	do_div(req_div, tar_freq);
 
 	/* Look for the whole division with the smallest remainder */
@@ -412,12 +338,12 @@ static void calc_best_clock_div(u32 tar_freq, u32 *axi_div,
 		do_div(borders, i);
 		/* The LCD divsion must be smaller than 64K */
 		if (borders < SZ_64K) {
-			tmp_lcd_div = AXI_BASE_CLK;
+			tmp_lcd_div = NB_PLL;
 			/* We cannot do 64-bit / 64-bit operations,
 			** thus... */
 			do_div(tmp_lcd_div, i);
 			do_div(tmp_lcd_div, tar_freq);
-			rem = calc_diff(AXI_BASE_CLK, (temp * tmp_lcd_div));
+			rem = calc_diff(NB_PLL, (temp * tmp_lcd_div));
 			if ((rem < best_rem) ||
 			    ((override == 1) && (rem == best_rem))) {
 				best_rem = rem;
@@ -430,7 +356,7 @@ static void calc_best_clock_div(u32 tar_freq, u32 *axi_div,
 				break;
 			/* Check the next LCD divider */
 			tmp_lcd_div++;
-			rem = calc_diff((temp * tmp_lcd_div), AXI_BASE_CLK);
+			rem = calc_diff((temp * tmp_lcd_div), NB_PLL);
 			if ((rem < best_rem) ||
 			    ((override == 1) && (rem == best_rem))) {
 				best_rem = rem;
@@ -446,7 +372,7 @@ static void calc_best_clock_div(u32 tar_freq, u32 *axi_div,
 
 	/* Look for the extended division with the smallest remainder */
 	if (best_rem != 0) {
-		req_div = AXI_BASE_CLK * 10;
+		req_div = NB_PLL * 10;
 		do_div(req_div, tar_freq);
 		/* Half div can be between 12.5 & 31.5 */
 		for (i = 55; i <= 315; i += 10) {
@@ -454,13 +380,13 @@ static void calc_best_clock_div(u32 tar_freq, u32 *axi_div,
 			borders = req_div;
 			do_div(borders, i);
 			if (borders < SZ_64K) {
-				tmp_lcd_div = AXI_BASE_CLK * 10;
+				tmp_lcd_div = NB_PLL * 10;
 				/* We cannot do 64-bit / 64-bit operations,
 				** thus... */
 				do_div(tmp_lcd_div, i);
 				do_div(tmp_lcd_div, tar_freq);
 
-				rem = calc_diff(AXI_BASE_CLK * 10,
+				rem = calc_diff(NB_PLL * 10,
 						(tmp_lcd_div * temp));
 				do_div(rem, 10);
 				if ((rem < best_rem) ||
@@ -477,7 +403,7 @@ static void calc_best_clock_div(u32 tar_freq, u32 *axi_div,
 				/* Check next LCD divider */
 				tmp_lcd_div++;
 				rem = calc_diff((tmp_lcd_div * temp),
-						AXI_BASE_CLK * 10);
+						NB_PLL * 10);
 				do_div(rem, 10);
 				if ((rem < best_rem) ||
 				    ((override == 1) && (rem == best_rem))) {
@@ -531,7 +457,8 @@ static unsigned long lcd_get_clock(struct clk *clk)
 #else
 #define LCD_SCLK	(CONFIG_FB_DOVE_CLCD_SCLK_VALUE*1000*1000)
 #endif
-int lcd_set_clock(struct clk *clk, unsigned long rate)
+int lcd_set_clock(struct clk_hw *hw, unsigned long rate,
+		  unsigned long parent)
 {
 	u32 axi_div, is_ext = 0;
 
@@ -544,7 +471,8 @@ int lcd_set_clock(struct clk *clk, unsigned long rate)
 	return 0;
 }
 
-int accrt_lcd_set_clock(struct clk *clk, unsigned long rate)
+int accrt_lcd_set_clock(struct clk_hw *hw, unsigned long rate,
+			unsigned long parent)
 {
 	u32 axi_div, is_ext = 0;
 
@@ -557,7 +485,7 @@ int accrt_lcd_set_clock(struct clk *clk, unsigned long rate)
 	return 0;
 }
 
-static void __lcd_clk_enable(struct clk *clk)
+static int __lcd_clk_enable(struct clk_hw *hw)
 {
 	u32	reg;
 	reg = readl(DOVE_GLOBAL_CONFIG_1);
@@ -566,10 +494,10 @@ static void __lcd_clk_enable(struct clk *clk)
 
 	/* We keep original PLL output 2G clock. */
 	dove_clocks_set_lcd_clock(1);
-	return;
+	return 0;
 }
 
-static void __lcd_clk_disable(struct clk *clk)
+static void __lcd_clk_disable(struct clk_hw *hw)
 {
 	u32	reg;
 	reg = readl(DOVE_GLOBAL_CONFIG_1);
@@ -593,7 +521,8 @@ static unsigned long axi_get_clock(struct clk *clk)
 	return c * 1000000UL;
 }
 
-static int axi_set_clock(struct clk *clk, unsigned long rate)
+static int axi_set_clock(struct clk_hw *hw, unsigned long rate,
+			 unsigned long parent)
 {
 	u32 divider = 0, i;
 
@@ -617,18 +546,8 @@ static int axi_set_clock(struct clk *clk, unsigned long rate)
 }
 
 
-static unsigned long ssp_get_clock(struct clk *clk)
-{
-	u32 divider;
-	u32 c;
-
-	divider = dove_clocks_get_bits(DOVE_SSP_CTRL_STATUS_1, 2, 7);
-	c = dove_clocks_divide(1000, divider);
-
-	return c * 1000000UL;
-}
-
-static int ssp_set_clock(struct clk *clk, unsigned long rate)
+static int ssp_set_clock(struct clk_hw *clk, unsigned long rate,
+			 unsigned long parent)
 {
 	u32 divider;
 
@@ -642,13 +561,9 @@ static int ssp_set_clock(struct clk *clk, unsigned long rate)
 }
 
 
-const struct clkops ssp_clk_ops = {
-	.getrate	= ssp_get_clock,
-	.setrate	= ssp_set_clock,
+const struct clk_ops ssp_clk_ops = {
+	.set_rate	= ssp_set_clock,
 };
-
-
-
 
 
 #ifdef CONFIG_SYSFS
@@ -673,7 +588,7 @@ static ssize_t dove_clocks_axi_store(struct kobject *kobj,
 
 	if (sscanf(buf, "%lu", &value) != 1)
 		return -EINVAL;
-	axi_set_clock(NULL, value);
+	axi_set_clock(NULL, value, 0);
 	return n;
 }
 
@@ -691,7 +606,7 @@ static ssize_t dove_clocks_gpu_store(struct kobject *kobj,
 
 	if (sscanf(buf, "%lu", &value) != 1)
 		return -EINVAL;
-	gpu_set_clock(NULL, value);
+	gpu_set_clock(NULL, value, 0);
 	return n;
 }
 
@@ -709,7 +624,7 @@ static ssize_t dove_clocks_vmeta_store(struct kobject *kobj,
 
 	if (sscanf(buf, "%lu", &value) != 1)
 		return -EINVAL;
-	vmeta_set_clock(NULL, value);
+	vmeta_set_clock(NULL, value, 0);
 	return n;
 }
 
@@ -727,7 +642,7 @@ static ssize_t dove_clocks_lcd_store(struct kobject *kobj,
 
 	if (sscanf(buf, "%lu", &value) != 1)
 		return -EINVAL;
-	lcd_set_clock(NULL, value);
+	lcd_set_clock(NULL, value, 0);
 	return n;
 }
 
@@ -764,276 +679,97 @@ static int __init dove_upstream_clocks_sysfs_setup(void)
 	return 0;
 }
 #endif
-const struct clkops gpu_clk_ops = {
-	.getrate	= gpu_get_clock,
-	.setrate	= gpu_set_clock,
+const struct clk_ops gpu_clk_ops = {
+	.enable		= gpu_clk_enable,
+	.disable	= gpu_clk_disable,
+#if 0
+	.set_rate	= gpu_set_clock,
+#endif
 };
 
-const struct clkops vpu_clk_ops = {
+const struct clk_ops vmeta_clk_ops = {
 	.enable		= vmeta_clk_enable,
 	.disable	= vmeta_clk_disable,
-	.getrate	= vmeta_get_clock,
-	.setrate	= vmeta_set_clock,
+	.set_rate	= vmeta_set_clock,
+	.round_rate	= vmeta_round_rate,
+	.recalc_rate	= vmeta_recalc_rate,
 };
 
-const struct clkops axi_clk_ops = {
-	.getrate	= axi_get_clock,
-	.setrate	= axi_set_clock,
-};
-
-const struct clkops lcd_clk_ops = {
-	.enable		= __lcd_clk_enable,
-	.disable	= __lcd_clk_disable,
-	.getrate	= lcd_get_clock,
-	.setrate	= lcd_set_clock,
-};
-
-const struct clkops accrt_lcd_clk_ops = {
-	.enable		= __lcd_clk_enable,
-	.disable	= __lcd_clk_disable,
-	.getrate	= lcd_get_clock,
-	.setrate	= accrt_lcd_set_clock,
-};
-
-int clk_enable(struct clk *clk)
-{
-	if (clk == NULL || IS_ERR(clk))
-		return -EINVAL;
-
-	if (clk->usecount++ == 0)
-		if (clk->ops->enable)
-			clk->ops->enable(clk);
-
-	return 0;
-}
-EXPORT_SYMBOL(clk_enable);
-
-void clk_disable(struct clk *clk)
-{
-	if (clk == NULL || IS_ERR(clk))
-		return;
-
-	if (clk->usecount > 0 && !(--clk->usecount))
-		if (clk->ops->disable)
-			clk->ops->disable(clk);
-}
-EXPORT_SYMBOL(clk_disable);
-
-unsigned long clk_get_rate(struct clk *clk)
-{
-	if (clk == NULL || IS_ERR(clk))
-		return -EINVAL;
-
-	if (clk->ops->getrate)
-		return clk->ops->getrate(clk);
-
-	return *(clk->rate);
-}
-EXPORT_SYMBOL(clk_get_rate);
-
-long clk_round_rate(struct clk *clk, unsigned long rate)
-{
-	if (clk == NULL || IS_ERR(clk))
-		return -EINVAL;
-
-	return *(clk->rate);
-}
-EXPORT_SYMBOL(clk_round_rate);
-
-int clk_set_rate(struct clk *clk, unsigned long rate)
-{
-	if (clk == NULL || IS_ERR(clk))
-		return -EINVAL;
-
-	if (clk->ops->setrate)
-		return clk->ops->setrate(clk, rate);
-
-	return -EINVAL;
-}
-EXPORT_SYMBOL(clk_set_rate);
-
-unsigned int  dove_tclk_get(void)
-{
-	return 166666667;
-}
-
-static unsigned long tclk_rate;
-
-static struct clk clk_core = {
-	.ops	= &ds_clk_ops,
-	.rate	= &tclk_rate,
-	.flags	= ALWAYS_ENABLED,
-};
-
-static struct clk clk_usb0 = {
-	.ops	= &ds_clk_ops,
-	.rate	= &tclk_rate,
-	.mask	= CLOCK_GATING_USB0_MASK,
-};
-
-static struct clk clk_usb1 = {
-	.ops	= &ds_clk_ops,
-	.rate	= &tclk_rate,
-	.mask	= CLOCK_GATING_USB1_MASK,
-};
-
-static struct clk clk_gbe = {
-	.ops	= &ds_clk_ops,
-	.rate	= &tclk_rate,
-	.mask	= CLOCK_GATING_GBE_MASK | CLOCK_GATING_GIGA_PHY_MASK,
-};
-
-static struct clk clk_sata = {
-	.ops	= &ds_clk_ops,
-	.rate	= &tclk_rate,
-	.mask	= CLOCK_GATING_SATA_MASK,
-};
-
-static struct clk clk_pcie0 = {
-	.ops	= &ds_clk_ops,
-	.rate	= &tclk_rate,
-	.mask	= CLOCK_GATING_PCIE0_MASK,
-};
-
-static struct clk clk_pcie1 = {
-	.ops	= &ds_clk_ops,
-	.rate	= &tclk_rate,
-	.mask	= CLOCK_GATING_PCIE1_MASK,
-};
-
-static struct clk clk_sdio0 = {
-	.ops	= &ds_clk_ops,
-	.rate	= &tclk_rate,
-	.mask	= CLOCK_GATING_SDIO0_MASK,
-};
-
-static struct clk clk_sdio1 = {
-	.ops	= &ds_clk_ops,
-	.rate	= &tclk_rate,
-	.mask	= CLOCK_GATING_SDIO1_MASK,
-};
-
-static struct clk clk_nand = {
-	.ops	= &ds_clk_ops,
-	.rate	= &tclk_rate,
-	.mask	= CLOCK_GATING_NAND_MASK,
-};
-
-static struct clk clk_camera = {
-	.ops	= &ds_clk_ops,
-	.rate	= &tclk_rate,
-	.mask	= CLOCK_GATING_CAMERA_MASK,
-};
-
-static struct clk clk_i2s0 = {
-	.ops	= &ds_clk_ops,
-	.rate	= &tclk_rate,
-	.mask	= CLOCK_GATING_I2S0_MASK,
-};
-
-static struct clk clk_i2s1 = {
-	.ops	= &ds_clk_ops,
-	.rate	= &tclk_rate,
-	.mask	= CLOCK_GATING_I2S1_MASK,
-};
-
-static struct clk clk_crypto = {
-	.ops	= &ds_clk_ops,
-	.rate	= &tclk_rate,
-	.mask	= CLOCK_GATING_CRYPTO_MASK,
-};
-
-static struct clk clk_ac97 = {
-	.ops	= &ac97_clk_ops,
-	.rate	= &tclk_rate,
-	.mask	= CLOCK_GATING_AC97_MASK,
-};
-
-static struct clk clk_pdma = {
-	.ops	= &ds_clk_ops,
-	.rate	= &tclk_rate,
-	.mask	= CLOCK_GATING_PDMA_MASK,
-};
-
-static struct clk clk_xor0 = {
-	.ops	= &ds_clk_ops,
-	.rate	= &tclk_rate,
-	.mask	= CLOCK_GATING_XOR0_MASK,
-};
-
-static struct clk clk_xor1 = {
-	.ops	= &ds_clk_ops,
-	.rate	= &tclk_rate,
-	.mask	= CLOCK_GATING_XOR1_MASK,
-};
-
+const struct clk_ops axi_clk_ops = {
+	.enable		= axi_clk_enable,
+	.disable	= axi_clk_disable,
 #if 0
-static struct clk clk_giga_phy = {
-	.rate	= &tclk_rate,
-	.mask	= CLOCK_GATING_GIGA_PHY_MASK,
-};
+	.set_rate	= axi_set_clock,
 #endif
+};
 
-static struct clk clk_gpu = {
+const struct clk_ops lcd_clk_ops = {
+	.enable		= __lcd_clk_enable,
+	.disable	= __lcd_clk_disable,
+	.set_rate	= lcd_set_clock,
+	/* recalc_rate and round_rate must be implemented */
+};
+
+const struct clk_ops accrt_lcd_clk_ops = {
+	.enable		= __lcd_clk_enable,
+	.disable	= __lcd_clk_disable,
+	.set_rate	= accrt_lcd_set_clock,
+	/* recalc_rate and round_rate must be implemented */
+};
+
+static const char* nb_pll[] = {
+        "nb_pll_clk"};
+
+static struct clk_init_data clk_gpu = {
+	.name	= "gpu_clk",
 	.ops	= &gpu_clk_ops,
+	.parent_names = nb_pll,
+	.num_parents = 1,
 };
 
-static struct clk clk_vpu = {
-	.ops	= &vpu_clk_ops,
-	.usecount = 0,
+static struct clk_init_data clk_vmeta = {
+	.name	= "vmeta_CLK",
+	.ops	= &vmeta_clk_ops,
+	.parent_names = nb_pll,
+	.num_parents = 1,
 };
 
-static struct clk clk_axi = {
+static struct clk_init_data clk_axi = {
+	.name	= "axi_clk",
 	.ops	= &axi_clk_ops,
+	.parent_names = nb_pll,
+	.num_parents = 1,
 };
 
-static struct clk clk_ssp = {
+static struct clk_init_data clk_ssp = {
+	.name	= "ssp_clk",
 	.ops	= &ssp_clk_ops,
+	.parent_names = nb_pll,
+	.num_parents = 1,
 };
 
-static struct clk clk_lcd = {
+static struct clk_init_data clk_lcd = {
+	.name	= "lcd_clk",
 	.ops	= &lcd_clk_ops,
+	.parent_names = nb_pll,
+	.num_parents = 1,
 };
 
-static struct clk accrt_clk_lcd = {
+static struct clk_init_data accrt_clk_lcd = {
+	.name	= "accurate_lcd_clk",
 	.ops	= &accrt_lcd_clk_ops,
+	.parent_names = nb_pll,
+	.num_parents = 1,
 };
 
-
-#define INIT_CK(dev, con, ck) \
-	{ .dev_id = dev, .con_id = con, .clk = ck }
-
-static struct clk_lookup dove_clocks[] = {
-	INIT_CK(NULL, "tclk", &clk_core),
-	INIT_CK("orion-ehci.0", NULL, &clk_usb0),
-	INIT_CK("orion-ehci.1", NULL, &clk_usb1),
-	INIT_CK(NULL, "usb0", &clk_usb0), /* for udc device mode */
-	INIT_CK(NULL, "usb1", &clk_usb1), /* for udc device mode */
-	INIT_CK("mv_netdev.0", NULL, &clk_gbe),
-	INIT_CK("mv643xx_eth.0", NULL, &clk_gbe),
-	INIT_CK("sata_mv.0", NULL, &clk_sata),
-	INIT_CK(NULL, "PCI0", &clk_pcie0),
-	INIT_CK(NULL, "PCI1", &clk_pcie1),
-	INIT_CK("sdhci-mv.0", NULL, &clk_sdio0),
-	INIT_CK("sdhci-mv.1", NULL, &clk_sdio1),
-	INIT_CK("dove-nand", NULL, &clk_nand),
-	INIT_CK("cafe1000-ccic.0", NULL, &clk_camera),
-	INIT_CK("mv88fx_snd.0", NULL, &clk_i2s0),
-	INIT_CK("mv88fx_snd.1", NULL, &clk_i2s1),
-	INIT_CK("crypto", NULL, &clk_crypto),
-	INIT_CK(NULL, "AC97CLK", &clk_ac97),
-	INIT_CK(NULL, "PDMA", &clk_pdma),
-	INIT_CK("mv_xor_shared.0", NULL, &clk_xor0),
-	INIT_CK("mv_xor_shared.1", NULL, &clk_xor1),
-#if 0
-	INIT_CK(NULL, "GIGA_PHY", &clk_giga_phy),
-#endif
-	INIT_CK(NULL, "GCCLK", &clk_gpu),
-	INIT_CK(NULL, "AXICLK", &clk_axi),
-	INIT_CK(NULL, "LCDCLK", &clk_lcd),
-	INIT_CK(NULL, "accurate_LCDCLK", &accrt_clk_lcd),
-	INIT_CK(NULL, "VMETA_CLK", &clk_vpu),
-	INIT_CK(NULL, "ssp", &clk_ssp),
+static struct clk_hw vmeta_hw_clk = {
+	.init = &clk_vmeta,
+};
+static struct clk_hw axi_hw_clk = {
+	.init = &clk_axi,
+};
+static struct clk_hw gc_hw_clk = {
+	.init = &clk_gpu,
 };
 
 int __init dove_clk_config(struct device *dev, const char *id,
@@ -1057,26 +793,30 @@ int __init dove_clk_config(struct device *dev, const char *id,
 
 int __init dove_devclks_init(void)
 {
-	int i;
-	tclk_rate = dove_tclk_get();
+	struct clk *clk;
+        struct clk_lookup *cl;
 
-	/* disable the clocks of all peripherals */
-#if 0
-	__clks_disable_all();
-#endif
-	for (i = 0; i < ARRAY_SIZE(dove_clocks); i++)
-		clkdev_add(&dove_clocks[i]);
-
+	nb_pll_clk = clk_register_fixed_rate(NULL, "nb_pll_clk", 
+			NULL, CLK_IS_ROOT, 
+			NB_PLL);
+	printk ("Register vmeta clk\n");
+	clk = clk_register (NULL, &axi_hw_clk);
+	cl = clkdev_alloc(clk, "axi_clk", NULL);
+	if (cl)
+		clkdev_add(cl);
+	clk = clk_register (NULL, &vmeta_hw_clk);
+	cl = clkdev_alloc(clk, "vmeta_clk", NULL);
+	if (cl)
+		clkdev_add(cl);
+	clk = clk_register (NULL, &gc_hw_clk);
+	cl = clkdev_alloc(clk, "gpu_clk", NULL);
+	if (cl)
+		clkdev_add(cl);
 #ifdef CONFIG_SYSFS
 	dove_upstream_clocks_sysfs_setup();
 #endif
-#if 0
-	__clk_disable(&clk_usb0);
-	__clk_disable(&clk_usb1);
-	__clk_disable(&clk_ac97);
-#endif
-	vmeta_clk_disable(&clk_vpu);
+	vmeta_clk_disable(&vmeta_hw_clk);
 	/* Set vmeta default clock to 500MHz */
-	vmeta_set_clock(&clk_vpu, 500000000);
+	vmeta_set_clock(&vmeta_hw_clk, 500000000, NB_PLL);
 	return 0;
 }

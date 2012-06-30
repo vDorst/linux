@@ -43,6 +43,7 @@
 #include <plat/audio.h>
 #include <plat/mv_xor.h>
 #include "common.h"
+#include "clock.h"
 
 unsigned int dove_tclk;
 static unsigned int dove_vmeta_memory_start;
@@ -299,6 +300,7 @@ static struct orion_clk_platform_data dove_clk_data = {
 void __init dove_clk_init(void)
 {
 	orion_clk_init(&dove_clk_data, dove_tclk);
+	dove_devclks_init();
 }
 
 /*****************************************************************************
