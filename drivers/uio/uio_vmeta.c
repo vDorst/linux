@@ -17,6 +17,7 @@
 #include <linux/io.h>
 #include <linux/dma-mapping.h>
 #include <linux/clk.h>
+#include <linux/clk-provider.h>
 #include <linux/sched.h>
 #include <linux/uio_vmeta.h>
 #include <linux/delay.h>
@@ -204,6 +205,7 @@ int vmeta_power_on(struct vmeta_instance *vi)
 		up_read(&vi->sem);
 		return 0;
 	}
+	clk_prepare(vi->clk);
 	clk_enable(vi->clk);
 	vi->power_status = 1;
 	up_read(&vi->sem);
@@ -228,7 +230,9 @@ int vmeta_clk_on(struct vmeta_instance *vi)
 		return 0;
 	}
 
+	clk_prepare(vi->axi_clk);
 	clk_enable(vi->axi_clk);
+	clk_prepare(vi->clk);
 	clk_enable(vi->clk);
 
 	vi->clk_status = 2;
@@ -283,6 +287,7 @@ int vmeta_power_off(struct vmeta_instance *vi)
 	}
 
 	clk_disable(vi->clk);
+	clk_unprepare(vi->clk);
 	vi->power_status = 0;
 	up_read(&vi->sem);
 
@@ -308,7 +313,9 @@ int vmeta_clk_off(struct vmeta_instance *vi)
 	}
 
 	clk_disable(vi->clk);
+	clk_unprepare(vi->clk);
 	clk_disable(vi->axi_clk);
+	clk_unprepare(vi->axi_clk);
 	vi->clk_status = 0;
 	vi->power_status = 0; // Rabeeh - hack
 	up_read(&vi->sem);
@@ -404,10 +411,16 @@ int vmeta_release(struct uio_info *info, struct inode *inode)
 
 #ifndef CONFIG_MEM_FOR_MULTIPROCESS
 	atomic_inc(&vmeta_available); /* release the device */
-	clk_disable(vmeta_priv_vi->clk);
-#else /* CONFIG_MEM_FOR_MULTIPROCESS */
-	if (atomic_dec_and_test(&vmeta_available))
+	if (__clk_get_enable_count(vmeta_priv_vi->clk)) {
 		clk_disable(vmeta_priv_vi->clk);
+		clk_unprepare(vmeta_priv_vi->clk);
+	}
+#else /* CONFIG_MEM_FOR_MULTIPROCESS */
+	if (atomic_dec_and_test(&vmeta_available) &&
+	    __clk_get_enable_count(vmeta_priv_vi->clk)) {
+		clk_disable(vmeta_priv_vi->clk);
+		clk_unprepare(vmeta_priv_vi->clk);
+	}
 #endif /* CONFIG_MEM_FOR_MULTIPROCESS */
 	return 0;
 }
@@ -588,14 +601,14 @@ static int vmeta_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	vi->axi_clk = clk_get(&pdev->dev, "AXICLK");
+	vi->axi_clk = clk_get(&pdev->dev, "axi_clk");
 	if (IS_ERR(vi->axi_clk)) {
 		printk(KERN_ERR "vmeta_probe: cannot get AXI clock\n");
 		ret = PTR_ERR(vi->axi_clk);
 		goto out_free;
 	}
 
-	vi->clk = clk_get(&pdev->dev, "VMETA_CLK");
+	vi->clk = clk_get(&pdev->dev, "vmeta_clk");
 	if (IS_ERR(vi->clk)) {
 		printk(KERN_ERR "vmeta_probe: cannot get vmeta clock\n");
 		ret = PTR_ERR(vi->clk);
@@ -756,11 +769,13 @@ static int vmeta_remove(struct platform_device *pdev)
 
 	if (!IS_ERR(vi->clk)) {
 		clk_disable(vi->clk);
+		clk_unprepare(vi->clk);
 		clk_put(vi->clk);
 	}
 
 	if (!IS_ERR(vi->axi_clk)) {
 		clk_disable(vi->axi_clk);
+		clk_unprepare(vi->clk);
 		clk_put(vi->axi_clk);
 	}
 
