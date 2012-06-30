@@ -4923,16 +4923,18 @@ gckOS_ClockOff(
     gc_pwr(0);
 #endif
 
-    clk = clk_get(NULL, "GCCLK");
+    clk = clk_get(NULL, "gpu_clk");
     CLOCK_VERIFY(clk);
     clk_disable(clk);
+    clk_unprepare(clk);
 
 #ifdef CONFIG_PXA_DVFM
 	/* decrease AXICLK count in kernel */
     clk = NULL;
-    clk = clk_get(NULL, "AXICLK");
+    clk = clk_get(NULL, "axi_clk");
     CLOCK_VERIFY(clk);
     clk_disable(clk);
+    clk_unprepare(clk);
 #endif
 
 	return gcvSTATUS_OK;
@@ -4947,13 +4949,14 @@ gckOS_ClockOn(
 
 #ifdef CONFIG_PXA_DVFM
 	/* increase AXICLK count in kernel */
-    clk = clk_get(NULL, "AXICLK");
+    clk = clk_get(NULL, "axi_clk");
     CLOCK_VERIFY(clk);
-	clk_enable(clk);
+    clk_prepare(clk);
+    clk_enable(clk);
     clk = NULL;
 #endif
 
-    clk = clk_get(NULL, "GCCLK");
+    clk = clk_get(NULL, "gpu_clk");
     CLOCK_VERIFY(clk);
 
     if(Frequency != 0)
@@ -4967,7 +4970,7 @@ gckOS_ClockOn(
             return -EAGAIN;
         }
     }
-
+    clk_prepare(clk);
     clk_enable(clk);
 
 #ifdef CONFIG_PXA_DVFM
