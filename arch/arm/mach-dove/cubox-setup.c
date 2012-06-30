@@ -361,6 +361,7 @@ static void __init cubox_init(void)
 	platform_device_register(&cubox_spdif);
 	dove_i2s1_init();
 	dove_gpu_init();
+	dove_vmeta_init();
 	dove_cubox_clcd_init();
 	spi_register_board_info(cubox_spi_flash_info,
 				ARRAY_SIZE(cubox_spi_flash_info));
