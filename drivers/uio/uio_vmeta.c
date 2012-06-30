@@ -434,6 +434,7 @@ vmeta_irq_poll_timer_handler(unsigned long data)
 	mod_timer(&vi->irq_poll_timer, jiffies + HZ/100);/*10ms timer*/
 }
 
+#ifndef CONFIG_ARCH_DOVE
 static irqreturn_t
 vmeta_bus_irq_handler(int irq, void *dev_id)
 {
@@ -443,6 +444,7 @@ vmeta_bus_irq_handler(int irq, void *dev_id)
 	uio_event_notify(&vi->uio_info);
 	return IRQ_HANDLED;
 }
+#endif
 
 static irqreturn_t
 vmeta_func_irq_handler(int irq, struct uio_info *dev_info)
@@ -523,9 +525,10 @@ static int vmeta_unlocked_ioctl(struct uio_info *info, unsigned int cmd,
 		break;
 	case VMETA_CMD_SUSPEND_CHECK: {
 		int vmeta_suspend_check = 0;
+		int dummy;
 		if (vmeta_pm_suspend_available.counter)
 			vmeta_suspend_check = 1;
-		__copy_to_user((int __user *)arg, &vmeta_suspend_check,
+		dummy = __copy_to_user((int __user *)arg, &vmeta_suspend_check,
 			       sizeof(int));
 		}
 		break;
@@ -557,7 +560,10 @@ static int vmeta_probe(struct platform_device *pdev)
 	struct resource *res;
 	struct vmeta_instance *vi;
 	int ret;
-	int irq_func, irq_bus;
+	int irq_func;
+#ifndef CONFIG_ARCH_DOVE 
+	int irq_bus;
+#endif
 	kernel_share *p_ks;
 #ifdef CONFIG_MEM_FOR_MULTIPROCESS
 	dma_addr_t mem_dma_addr;
@@ -718,8 +724,7 @@ static int vmeta_probe(struct platform_device *pdev)
 	mod_timer(&vi->irq_poll_timer, jiffies + HZ/100);
 #endif
 
-#ifdef CONFIG_ARCH_DOVE
-#else
+#ifndef CONFIG_ARCH_DOVE
 	ret = request_irq(irq_bus, vmeta_bus_irq_handler, 0,
 			  UIO_VMETA_BUS_IRQ_NAME, vi);
 	if (ret) {
