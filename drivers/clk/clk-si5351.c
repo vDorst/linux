@@ -26,7 +26,7 @@
 
 #include <linux/delay.h>
 
-#if 1
+#if 0
 # define si5351_dbg(fmt, ...)	printk("%s :: " fmt, __FUNCTION__, ##__VA_ARGS__)
 #else
 # define si5351_dbg(fmt, ...)	
