@@ -44,6 +44,7 @@ struct mv_dma_priv {
 	spinlock_t lock;
 	struct dma_desclist desclist;
 	u32 (*print_and_clear_irq)(void);
+	void (*trigger)(void);
 } tpg;
 
 #define ITEM(x)		((struct mv_dma_desc *)DESCLIST_ITEM(tpg.desclist, x))
@@ -155,6 +156,24 @@ void mv_dma_clear(void)
 }
 EXPORT_SYMBOL_GPL(mv_dma_clear);
 
+static void mv_tdma_trigger(void)
+{
+	writel(ITEM_DMA(0), tpg.reg + DMA_NEXT_DESC);
+}
+
+void mv_idma_trigger(void)
+{
+	u32 val;
+
+	switch_dma_engine(0);
+
+	writel(ITEM_DMA(0), tpg.reg + DMA_NEXT_DESC);
+
+	val = readl(tpg.reg + DMA_CTRL);
+	val |= DMA_CTRL_ENABLE | DMA_CTRL_FETCH_ND;
+	writel(val, tpg.reg + DMA_CTRL);
+}
+
 void mv_dma_trigger(void)
 {
 	if (!tpg.dev)
@@ -162,7 +181,7 @@ void mv_dma_trigger(void)
 
 	spin_lock(&tpg.lock);
 
-	writel(ITEM_DMA(0), tpg.reg + DMA_NEXT_DESC);
+	(*tpg.trigger)();
 
 	spin_unlock(&tpg.lock);
 }
@@ -470,6 +489,8 @@ static int mv_probe_tdma(struct platform_device *pdev)
 	if (rc)
 		return rc;
 
+	tpg.trigger = &mv_tdma_trigger;
+
 	/* have an ear for occurring errors */
 	writel(TDMA_INT_ALL, tpg.reg + TDMA_ERR_MASK);
 	writel(0, tpg.reg + TDMA_ERR_CAUSE);
@@ -487,6 +508,8 @@ static int mv_probe_idma(struct platform_device *pdev)
 			&idma_print_and_clear_irq, &idma_set_deco_win);
 	if (rc)
 		return rc;
+
+	tpg.trigger = &mv_idma_trigger;
 
 	/* have an ear for occurring errors */
 	writel(IDMA_INT_MISS(0) | IDMA_INT_APROT(0) | IDMA_INT_WPROT(0),
