@@ -79,6 +79,9 @@
 #define IDMA_DECO_PROT(chan)		(0x70 + (chan) * 4)
 #define IDMA_DECO_ENABLE		0x80 /* bit field, zero enables */
 
+#define IDMA_DECO_PROT_RO(win)		(0x1 << ((win) * 2))
+#define IDMA_DECO_PROT_RW(win)		(0x3 << ((win) * 2))
+
 /* decoding address and size masks */
 #define DMA_DECO_ADDR_MASK(x)		((x) & 0xffff0000)
 #define DMA_DECO_SIZE_MASK(x)		DMA_DECO_ADDR_MASK((x) - 1)

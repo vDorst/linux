@@ -231,6 +231,9 @@ static u32 idma_print_and_clear_irq(void)
 	val2 = readl(tpg.reg + IDMA_ERR_SELECT);
 	addr = readl(tpg.reg + IDMA_ERR_ADDR);
 
+	printk(KERN_ERR MV_DMA "%s: cause 0x%x, select 0x%x, addr 0x%x\n",
+			__func__, val, val2, addr);
+
 	if (val & IDMA_INT_MISS(0))
 		printk(KERN_ERR MV_DMA "%s: address miss @%x!\n",
 				__func__, val2 & IDMA_INT_MISS(0) ? addr : 0);
@@ -324,8 +327,14 @@ static void idma_set_deco_win(void __iomem *regs, int chan,
 	val &= ~(1 << chan);
 	writel(val, regs + IDMA_DECO_ENABLE);
 
-	/* allow RW access from all other windows */
-	writel(0xffff, regs + IDMA_DECO_PROT(chan));
+	/* allow RW access to this window for IDMA channel 0 */
+	val = readl(regs + IDMA_DECO_PROT(0));
+	val |= IDMA_DECO_PROT_RW(chan);
+	writel(val, regs + IDMA_DECO_PROT(0));
+
+	printk(KERN_INFO MV_DMA "%s: win(%d): BAR 0x%x, size 0x%x, enable 0x%x, prot 0x%x\n",
+			__func__, chan, readl(regs + IDMA_DECO_SIZE(chan)),
+			readl(regs + IDMA_DECO_ENABLE), readl(regs + IDMA_DECO_PROT(0)));
 }
 
 static void setup_mbus_windows(void __iomem *regs, struct mv_dma_pdata *pdata,
