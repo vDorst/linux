@@ -167,11 +167,12 @@ void mv_idma_trigger(void)
 
 	switch_dma_engine(0);
 
-	writel(ITEM_DMA(0), tpg.reg + DMA_NEXT_DESC);
+	writel(ITEM(0)->count, tpg.reg + IDMA_BYTE_COUNT(0));
+	writel(ITEM(0)->src, tpg.reg + IDMA_SRC_ADDR(0));
+	writel(ITEM(0)->dst, tpg.reg + IDMA_DST_ADDR(0));
+	writel(ITEM(0)->next, tpg.reg + IDMA_NEXT_DESC(0));
 
-	val = readl(tpg.reg + DMA_CTRL);
-	val |= DMA_CTRL_ENABLE | DMA_CTRL_FETCH_ND;
-	writel(val, tpg.reg + DMA_CTRL);
+	switch_dma_engine(1);
 }
 
 void mv_dma_trigger(void)
