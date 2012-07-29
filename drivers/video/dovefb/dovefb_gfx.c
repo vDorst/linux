@@ -49,7 +49,7 @@
 #include "dovefb_if.h"
 #define MAX_HWC_SIZE		(64*64*2)
 #define DEFAULT_REFRESH		60	/* Hz */
-#define DEFAULT_EDID_INTERVAL   30	/* seconds */
+#define DEFAULT_EDID_INTERVAL   3	/* seconds */
 
 static int dovefb_fill_edid(struct fb_info *fi,
 				struct dovefb_mach_info *dmi);
