@@ -938,7 +938,7 @@ static int dovefb_enable_lcd0(struct platform_device *pdev)
 	return 0;
 }
 
-static int __init dovefb_probe(struct platform_device *pdev)
+static int __init_refok dovefb_probe(struct platform_device *pdev)
 {
 	struct dovefb_mach_info *dmi;
 	struct dovefb_info *info = NULL;
