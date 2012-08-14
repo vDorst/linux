@@ -353,6 +353,7 @@ static void __init cubox_init(void)
 	dove_sdio0_init(&cubox_sdio0_data);
 	dove_sdio1_init(NULL);
 	dove_ge00_init(&cubox_ge00_data);
+	dove_crypto_init();
 	dove_sata_init(&cubox_sata_data);
 	i2c_register_board_info(0, dove_cubox_i2c_bus0_devs,
 				ARRAY_SIZE(dove_cubox_i2c_bus0_devs));

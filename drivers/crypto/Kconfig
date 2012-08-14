@@ -174,7 +174,7 @@ config CRYPTO_DEV_MV_CESA
 	help
 	  This driver allows you to utilize the Cryptographic Engines and
 	  Security Accelerator (CESA) which can be found on the Marvell Orion
-	  and Kirkwood SoCs, such as QNAP's TS-209.
+	  Kirkwood, Dove SoCs, such as QNAP's TS-209.
 
 	  Currently the driver supports AES in ECB and CBC mode without DMA.
 

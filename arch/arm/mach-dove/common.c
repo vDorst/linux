@@ -615,6 +615,48 @@ void __init dove_i2s1_init(void)
 }
 
 /*****************************************************************************
+ * Cryptographic Engines and Security Accelerator (CESA)
+ ****************************************************************************/
+static struct resource dove_tdma_res[] = {
+	{
+		.name	= "regs deco",
+		.start	= CRYPTO_PHYS_BASE + 0xA00,
+		.end	= CRYPTO_PHYS_BASE + 0xA24,
+		.flags	= IORESOURCE_MEM,
+	}, {
+		.name	= "regs control and error",
+		.start	= CRYPTO_PHYS_BASE + 0x800,
+		.end	= CRYPTO_PHYS_BASE + 0x8CF,
+		.flags	= IORESOURCE_MEM,
+	}, {
+		.name   = "crypto error",
+		.start  = IRQ_DOVE_CRYPTO_ERR,
+		.end    = IRQ_DOVE_CRYPTO_ERR,
+		.flags  = IORESOURCE_IRQ,
+	},
+};
+
+static u64 mv_tdma_dma_mask = DMA_BIT_MASK(32);
+
+static struct platform_device dove_tdma_device = {
+	.name		= "mv_tdma",
+	.id		= -1,
+	.dev		= {
+		.dma_mask		= &mv_tdma_dma_mask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+	},
+	.num_resources	= ARRAY_SIZE(dove_tdma_res),
+	.resource	= dove_tdma_res,
+};
+
+void __init dove_crypto_init(void)
+{
+	platform_device_register(&dove_tdma_device);
+	orion_crypto_init(CRYPTO_PHYS_BASE, DOVE_SRAM_PHYS_BASE,
+			  DOVE_SRAM_SIZE, IRQ_DOVE_CRYPTO);
+}
+
+/*****************************************************************************
  * General
  ****************************************************************************/
 void __init dove_init(void)

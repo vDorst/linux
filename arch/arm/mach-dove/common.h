@@ -48,5 +48,6 @@ void dove_vmeta_init(void);
 void dove_gpu_init(void);
 void dove_tag_fixup_mem32(struct tag *t, char **from, struct meminfo *meminfo);
 void dove_audio_init(void);
+void dove_crypto_init(void);
 
 #endif
