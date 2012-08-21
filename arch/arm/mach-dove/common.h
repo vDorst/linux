@@ -38,6 +38,7 @@ void dove_uart3_init(void);
 void dove_spi0_init(void);
 void dove_spi1_init(void);
 void dove_i2c_init(void);
+void dove_crypto_init(void);
 void dove_sdio0_init(struct sdhci_dove_platform_data *);
 void dove_sdio1_init(struct sdhci_dove_platform_data *);
 void dove_i2s0_init(void);

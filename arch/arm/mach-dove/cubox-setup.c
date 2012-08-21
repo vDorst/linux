@@ -340,6 +340,7 @@ static void __init cubox_init(void)
 	dove_mpp_conf(cubox_mpp_list, cubox_mpp_grp_list, 0, 0);
 	dove_hwmon_init();
 	dove_i2c_init();
+	dove_crypto_init();
 	dove_spi0_init();
 	dove_spi1_init();
 	dove_uart0_init();
