@@ -445,15 +445,6 @@ void __init dove_wdt_init(void)
 }
 
 /*****************************************************************************
- * Cryptographic Engines and Security Accelerator (CESA)
- ****************************************************************************/
-void __init dove_crypto_init(void)
-{
-	orion_crypto_init(DOVE_CRYPT_PHYS_BASE, DOVE_CESA_PHYS_BASE,
-			  DOVE_CESA_SIZE, IRQ_DOVE_CRYPTO);
-}
-
-/*****************************************************************************
  * XOR 0
  ****************************************************************************/
 void __init dove_xor0_init(void)
@@ -621,13 +612,13 @@ void __init dove_i2s1_init(void)
 static struct resource dove_tdma_res[] = {
 	{
 		.name	= "regs deco",
-		.start	= CRYPTO_PHYS_BASE + 0xA00,
-		.end	= CRYPTO_PHYS_BASE + 0xA24,
+		.start	= DOVE_CRYPT_PHYS_BASE + 0xA00,
+		.end	= DOVE_CRYPT_PHYS_BASE + 0xA24,
 		.flags	= IORESOURCE_MEM,
 	}, {
 		.name	= "regs control and error",
-		.start	= CRYPTO_PHYS_BASE + 0x800,
-		.end	= CRYPTO_PHYS_BASE + 0x8CF,
+		.start	= DOVE_CRYPT_PHYS_BASE + 0x800,
+		.end	= DOVE_CRYPT_PHYS_BASE + 0x8CF,
 		.flags	= IORESOURCE_MEM,
 	}, {
 		.name   = "crypto error",
@@ -653,8 +644,8 @@ static struct platform_device dove_tdma_device = {
 void __init dove_crypto_init(void)
 {
 	platform_device_register(&dove_tdma_device);
-	orion_crypto_init(CRYPTO_PHYS_BASE, DOVE_SRAM_PHYS_BASE,
-			  DOVE_SRAM_SIZE, IRQ_DOVE_CRYPTO);
+	orion_crypto_init(DOVE_CRYPT_PHYS_BASE, DOVE_CESA_PHYS_BASE,
+			  DOVE_CESA_SIZE, IRQ_DOVE_CRYPTO);
 }
 
 /*****************************************************************************

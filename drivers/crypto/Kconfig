@@ -176,7 +176,7 @@ config CRYPTO_DEV_MV_CESA
 	  Security Accelerator (CESA) which can be found on the Marvell Orion
 	  Kirkwood, Dove SoCs, such as QNAP's TS-209.
 
-	  Currently the driver supports AES in ECB and CBC mode without DMA.
+	  Currently the driver supports AES in ECB and CBC mode with TDMA.
 
 config CRYPTO_DEV_NIAGARA2
        tristate "Niagara2 Stream Processing Unit driver"
