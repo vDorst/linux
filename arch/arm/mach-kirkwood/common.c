@@ -235,6 +235,7 @@ void __init kirkwood_clk_init(void)
 	orion_clkdev_add(NULL, "orion-ehci.0", usb0);
 	orion_clkdev_add(NULL, "orion_nand", runit);
 	orion_clkdev_add(NULL, "mvsdio", sdio);
+	orion_clkdev_add(NULL, "mv_tdma", crypto);
 	orion_clkdev_add(NULL, "mv_crypto", crypto);
 	orion_clkdev_add(NULL, MV_XOR_SHARED_NAME ".0", xor0);
 	orion_clkdev_add(NULL, MV_XOR_SHARED_NAME ".1", xor1);
@@ -433,8 +434,41 @@ void __init kirkwood_uart1_init(void)
 /*****************************************************************************
  * Cryptographic Engines and Security Accelerator (CESA)
  ****************************************************************************/
+static struct resource kirkwood_tdma_res[] = {
+	{
+		.name	= "regs deco",
+		.start	= CRYPTO_PHYS_BASE + 0xA00,
+		.end	= CRYPTO_PHYS_BASE + 0xA24,
+		.flags	= IORESOURCE_MEM,
+	}, {
+		.name	= "regs control and error",
+		.start	= CRYPTO_PHYS_BASE + 0x800,
+		.end	= CRYPTO_PHYS_BASE + 0x8CF,
+		.flags	= IORESOURCE_MEM,
+	}, {
+		.name   = "crypto error",
+		.start  = IRQ_KIRKWOOD_TDMA_ERR,
+		.end    = IRQ_KIRKWOOD_TDMA_ERR,
+		.flags  = IORESOURCE_IRQ,
+	},
+};
+
+static u64 mv_tdma_dma_mask = DMA_BIT_MASK(32);
+
+static struct platform_device kirkwood_tdma_device = {
+	.name		= "mv_tdma",
+	.id		= -1,
+	.dev		= {
+		.dma_mask		= &mv_tdma_dma_mask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+	},
+	.num_resources	= ARRAY_SIZE(kirkwood_tdma_res),
+	.resource	= kirkwood_tdma_res,
+};
+
 void __init kirkwood_crypto_init(void)
 {
+	platform_device_register(&kirkwood_tdma_device);
 	orion_crypto_init(CRYPTO_PHYS_BASE, KIRKWOOD_SRAM_PHYS_BASE,
 			  KIRKWOOD_SRAM_SIZE, IRQ_KIRKWOOD_CRYPTO);
 }

@@ -917,9 +917,15 @@ static struct resource orion_crypto_resources[] = {
 	},
 };
 
+static u64 mv_crypto_dmamask = DMA_BIT_MASK(32);
+
 static struct platform_device orion_crypto = {
 	.name           = "mv_crypto",
 	.id             = -1,
+	.dev		= {
+		.dma_mask = &mv_crypto_dmamask,
+		.coherent_dma_mask = DMA_BIT_MASK(32),
+	},
 };
 
 void __init orion_crypto_init(unsigned long mapbase,

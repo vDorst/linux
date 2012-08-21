@@ -24,6 +24,7 @@
 #define SEC_CFG_CH1_W_IDMA	(1 << 8)
 #define SEC_CFG_ACT_CH0_IDMA	(1 << 9)
 #define SEC_CFG_ACT_CH1_IDMA	(1 << 10)
+#define SEC_CFG_MP_CHAIN	(1 << 11)
 
 #define SEC_ACCEL_STATUS	0xde0c
 #define SEC_ST_ACT_0		(1 << 0)
