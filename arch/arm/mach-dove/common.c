@@ -278,6 +278,7 @@ static struct orion_clk_clock dove_clk_clocks[] = {
 	ORION_CLK_CLOCK(NULL, "cafe1000-ccic.0", "camera"),
 	ORION_CLK_CLOCK(NULL, "kirkwood-i2s.0", "i2s0"),
 	ORION_CLK_CLOCK(NULL, "kirkwood-i2s.1", "i2s1"),
+	ORION_CLK_CLOCK(NULL, "mv_tdma", "crypto"),
 	ORION_CLK_CLOCK(NULL, "mv_crypto", "crypto"),
 	ORION_CLK_CLOCK(NULL, "dove-ac97", "ac97"),
 	ORION_CLK_CLOCK(NULL, "dove-pdma", "pdma"),
