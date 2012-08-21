@@ -78,6 +78,7 @@ struct uio_device;
  * @handler:		the device's irq handler
  * @mmap:		mmap operation for this uio device
  * @open:		open operation for this uio device
+ * @unlock_ioctl:	unlocked ioctl for this uio device
  * @release:		release operation for this uio device
  * @irqcontrol:		disable/enable irqs when 0/1 is written to /dev/uioX
  */
@@ -93,6 +94,8 @@ struct uio_info {
 	irqreturn_t (*handler)(int irq, struct uio_info *dev_info);
 	int (*mmap)(struct uio_info *info, struct vm_area_struct *vma);
 	int (*open)(struct uio_info *info, struct inode *inode);
+	int (*unlocked_ioctl)(struct uio_info *info, unsigned int cmd,
+			      unsigned long arg);
 	int (*release)(struct uio_info *info, struct inode *inode);
 	int (*irqcontrol)(struct uio_info *info, s32 irq_on);
 };
