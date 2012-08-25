@@ -527,7 +527,6 @@
 
 #define _OPENVG_VERSION_STRING_     "OpenVG 1.1"
 
-#define _GC_VERSION_STRING_        "GC Ver0.8.0.3184"
+#define _GC_VERSION_STRING_        "GC Ver0.8.0.3184-1"
 
 #endif /* __gc_hal_options_h_ */
-

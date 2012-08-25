@@ -195,7 +195,7 @@ endif
 ifeq ($(DEBUG), 1)
 	CFLAGS += -g -fPIC -O0 -DDEBUG -D_DEBUG
 else
-	CFLAGS += -O2 -fPIC -g
+	CFLAGS += -O2 -fPIC
 endif
 
 ifeq ($(EGL_API_FB), 1)
