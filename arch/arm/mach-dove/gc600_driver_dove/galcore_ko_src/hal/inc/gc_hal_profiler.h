@@ -127,14 +127,10 @@ typedef struct _gcsPROFILER
 
     /* Clock Info */
     gctUINT64       		frameStart;
-    gctUINT64       		frameEnd;
 
     /* Current frame information */
     gctUINT32       		frameNumber;
     gctUINT64       		frameStartTimeusec;
-    gctUINT64       		frameEndTimeusec;
-    gctUINT64       		frameStartCPUTimeusec;
-    gctUINT64       		frameEndCPUTimeusec;
 
 #if PROFILE_HAL_COUNTERS
     gctUINT32       		vertexBufferTotalBytesAlloc;
@@ -152,12 +148,6 @@ typedef struct _gcsPROFILER
     int             		textureBufferTotalObjectsAlloc;
     int             		textureBufferNewObjectsAlloc;
 
-    gctUINT32       		numCommits;
-    gctUINT32       		drawPointCount;
-    gctUINT32       		drawLineCount;
-    gctUINT32       		drawTriangleCount;
-    gctUINT32       		drawVertexCount;
-    gctUINT32       		redundantStateChangeCalls;
 #endif
 }
 gcsPROFILER;
@@ -229,4 +219,3 @@ gcoPROFILER_ShaderFS(
 #endif
 
 #endif /* __gc_hal_profiler_h_ */
-
