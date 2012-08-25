@@ -10,7 +10,7 @@
 *    This program is distributed in the hope that it will be useful,
 *    but WITHOUT ANY WARRANTY; without even the implied warranty of
 *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public Lisence for more details.
+*    GNU General Public License for more details.
 *
 *    You should have received a copy of the GNU General Public License
 *    along with this program; if not write to the Free Software
@@ -105,7 +105,7 @@ extern "C" {
 #define gcvFALSE				0
 #define gcvTRUE					1
 
-#define gcvINFINITE				((gctUINT32) ~0)
+#define gcvINFINITE				((gctUINT32) ~0U)
 
 typedef int						gctBOOL;
 typedef gctBOOL *				gctBOOL_PTR;
@@ -277,6 +277,7 @@ typedef enum _gceSTATUS
 	gcvSTATUS_NOT_FOUND				=	-19,
 	gcvSTATUS_NOT_ALIGNED			=	-20,
 	gcvSTATUS_INVALID_REQUEST		=	-21,
+	gcvSTATUS_GPU_NOT_RESPONDING	=	-22,
 
 	/* Linker errors. */
 	gcvSTATUS_GLOBAL_TYPE_MISMATCH	=	-1000,
@@ -482,6 +483,63 @@ gceSTATUS;
 #define gcmABS(x)				(((x) < 0)    ? -(x) :  (x))
 #define gcmNEG(x)				(((x) < 0)    ?  (x) : -(x))
 
+
+#define gcmUNALIGNMENT(X) ((gctUINT32)(X) & (sizeof (gctUINT32) - 1))
+
+#define gcmMEMCPY_BYTE(dst,src,size) \
+    {\
+        gctUINT32 i = 0; \
+        for(i = 0; i < size; i++)\
+        {\
+            *((gctUINT8 *)dst+i) = *((gctUINT8*)src+i);\
+        }\
+    }
+
+/* Optimize memory copy. 
+       For 4,8,12,16 bytes copy, use unsigned int assignment instead of calling memcopy.
+       ATTENTION: no break in switch branch.
+*/
+#define gcmMEMCPY_DWORD(dst,src,size) \
+    switch(size) \
+    {\
+        case 16:\
+            *((gctUINT32 *)dst + 3) = *((gctUINT32 *)src + 3);\
+        case 12:\
+            *((gctUINT32 *)dst + 2) = *((gctUINT32 *)src + 2);\
+        case 8:\
+            *((gctUINT32 *)dst + 1) = *((gctUINT32 *)src + 1);\
+        case 4:\
+            *((gctUINT32 *)dst) = *((gctUINT32 *)src);\
+            break;\
+        default:\
+            gcmMEMCPY_BYTE(dst,src,size);\
+            break;\
+    }
+    
+/* 
+ * gcmMEMCPY. 
+ *
+ * gcmMEMCPY is for normal size(> 16 bytes) memory copy
+ * gcmMEMCPY_DWORD is for size <=16 bytes
+ * Note: if you do not know the size, just use gcmMEMCPY
+*/
+#define gcmMEMCPY(dst,src,size)                 \
+    {                                           \
+        gctUINT32 *pDst = (gctUINT32 *)dst;     \
+        gctUINT32 *pSrc = (gctUINT32 *)src;     \
+        gctUINT32 Size  = size;                 \
+        while(Size >= gcmSIZEOF(gctUINT32) * 4) \
+        {                                       \
+            pDst[0] = pSrc[0];                  \
+            pDst[1] = pSrc[1];                  \
+            pDst[2] = pSrc[2];                  \
+            pDst[3] = pSrc[3];                  \
+            pDst += 4;                          \
+            pSrc += 4;                          \
+            Size -= (gcmSIZEOF(gctUINT32) * 4); \
+        }                                       \
+        gcmMEMCPY_DWORD(pDst,pSrc,Size)         \
+    }
 /*******************************************************************************
 **
 **	gcmPTR2INT
@@ -534,7 +592,7 @@ gceSTATUS;
 ( \
 	gcmPTR2INT(& (((struct s *) 0)->field)) \
 )
-
+    
 #ifdef __cplusplus
 }
 #endif

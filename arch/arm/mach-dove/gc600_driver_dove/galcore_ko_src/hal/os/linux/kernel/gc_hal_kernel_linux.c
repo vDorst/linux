@@ -10,7 +10,7 @@
 *    This program is distributed in the hope that it will be useful,
 *    but WITHOUT ANY WARRANTY; without even the implied warranty of
 *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public Lisence for more details.
+*    GNU General Public License for more details.
 *
 *    You should have received a copy of the GNU General Public License
 *    along with this program; if not write to the Free Software
@@ -58,7 +58,7 @@ gckKERNEL_QueryVideoMemory(
 
 	/* Verify the arguments. */
 	gcmkVERIFY_OBJECT(Kernel, gcvOBJ_KERNEL);
-	gcmkVERIFY_ARGUMENT(Interface != NULL);
+	gcmkVERIFY_ARGUMENT(Interface != gcvNULL);
 
 	/* Extract the pointer to the gckGALDEVICE class. */
 	device = (gckGALDEVICE) Kernel->context;
@@ -114,7 +114,7 @@ gckKERNEL_GetVideoMemoryPool(
 
 	/* Verify the arguments. */
 	gcmkVERIFY_OBJECT(Kernel, gcvOBJ_KERNEL);
-	gcmkVERIFY_ARGUMENT(VideoMemory != NULL);
+	gcmkVERIFY_ARGUMENT(VideoMemory != gcvNULL);
 
     /* Extract the pointer to the gckGALDEVICE class. */
     device = (gckGALDEVICE) Kernel->context;
@@ -139,7 +139,7 @@ gckKERNEL_GetVideoMemoryPool(
 
 	default:
 		/* Unknown pool. */
-		videoMemory = NULL;
+		videoMemory = gcvNULL;
 	}
 
 	/* Return pointer to the gckVIDMEM object. */
@@ -147,7 +147,7 @@ gckKERNEL_GetVideoMemoryPool(
 
 	/* Return status. */
 	gcmkFOOTER_ARG("*VideoMemory=0x%p", *VideoMemory);
-	return (videoMemory == NULL) ? gcvSTATUS_OUT_OF_MEMORY : gcvSTATUS_OK;
+	return (videoMemory == gcvNULL) ? gcvSTATUS_OUT_OF_MEMORY : gcvSTATUS_OK;
 }
 
 /*******************************************************************************
@@ -260,31 +260,31 @@ gckKERNEL_MapVideoMemory(
     gctPOINTER logical;
 
     gcmkHEADER_ARG("Kernel=0x%p InUserSpace=%d Address=%08x",
-			   Kernel, InUserSpace, Address);
+    			   Kernel, InUserSpace, Address);
 
     /* Verify the arguments. */
     gcmkVERIFY_OBJECT(Kernel, gcvOBJ_KERNEL);
-    gcmkVERIFY_ARGUMENT(Logical != NULL);
+    gcmkVERIFY_ARGUMENT(Logical != gcvNULL);
 
     /* Extract the pointer to the gckGALDEVICE class. */
     device = (gckGALDEVICE) Kernel->context;
 
     /* Split the memory address into a pool type and offset. */
     gcmkONERROR(
-	gckHARDWARE_SplitMemory(Kernel->hardware, Address, &pool, &offset));
+    	gckHARDWARE_SplitMemory(Kernel->hardware, Address, &pool, &offset));
 
     /* Dispatch on pool. */
     switch (pool)
     {
     case gcvPOOL_LOCAL_INTERNAL:
-	/* Internal memory. */
-	logical = device->internalLogical;
-	break;
+    	/* Internal memory. */
+    	logical = device->internalLogical;
+    	break;
 
     case gcvPOOL_LOCAL_EXTERNAL:
-	/* External memory. */
-	logical = device->externalLogical;
-	break;
+    	/* External memory. */
+    	logical = device->externalLogical;
+    	break;
 
     case gcvPOOL_SYSTEM:
 		/* System memory. */
@@ -298,11 +298,18 @@ gckKERNEL_MapVideoMemory(
 
 			mdlMap = FindMdlMap(mdl, current->tgid);
 			gcmkASSERT(mdlMap);
-
-			logical = (gctPOINTER) mdlMap->vmaAddr;
+            if (mdlMap)
+            {
+			    logical = (gctPOINTER) mdlMap->vmaAddr;
+            }
+            else
+            {
+                /* FindMdlMap Fail, Invalid mdlMap. */
+    	        gcmkONERROR(gcvSTATUS_NOT_FOUND);
+            }
 		}
 
-		gcmkVERIFY_OK(
+		gcmkONERROR(
 			gckHARDWARE_SplitMemory(Kernel->hardware,
 									device->contiguousVidMem->baseAddress,
 									&pool,
@@ -312,8 +319,8 @@ gckKERNEL_MapVideoMemory(
 		break;
 
     default:
-	/* Invalid memory pool. */
-	gcmkONERROR(gcvSTATUS_INVALID_ARGUMENT);
+    	/* Invalid memory pool. */
+    	gcmkONERROR(gcvSTATUS_INVALID_ARGUMENT);
     }
 
     /* Build logical address of specified address. */

@@ -10,7 +10,7 @@
 *    This program is distributed in the hope that it will be useful,
 *    but WITHOUT ANY WARRANTY; without even the implied warranty of
 *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public Lisence for more details.
+*    GNU General Public License for more details.
 *
 *    You should have received a copy of the GNU General Public License
 *    along with this program; if not write to the Free Software
@@ -137,6 +137,33 @@ typedef enum _gceHOW
 }
 gceHOW;
 
+typedef enum _gceSIGNAL_TYPE
+{
+    gcvSIGNAL_NOPE              = 0x0,
+    gcvSIGNAL_CONTEXT_GCU       = 0x1,
+    gcvSIGNAL_CONTEXT           = 0x2,
+    gcvSIGNAL_FENCE_GCU         = 0x3,
+    gcvSIGNAL_FENCE             = 0x4,
+    gcvSIGNAL_DISPLAY_START     = 0x5,
+    gcvSIGNAL_DISPLAY_STOP      = 0x6,
+    gcvSIGNAL_WORKER_THREAD     = 0x7,
+    gcvSIGNAL_SYNC              = 0x8,
+    gcvSIGNAL_SURFACE           = 0x9,
+    gcvSIGNAL_TEXTURE           = 0x10,
+    gcvSIGNAL_STREAM            = 0x11,
+    gcvSIGNAL_INDEX_GROUP       = 0x12,
+    gcvSIGNAL_RESERVE_MEM_GROUP = 0x13,
+    gcvSIGNAL_CMD_BUFFER        = 0x14,
+    gcvSIGNAL_CONTEXT_BUFFER    = 0x15,
+    gcvSIGNAL_INDEX_DYNAMIC     = 0x16,
+    gcvSIGNAL_STREAM_DYNAMIC    = 0x17,
+    gcvSIGNAL_STALL             = 0x18,
+    gcvSIGNAL_RESERVED
+}
+gceSIGNAL_TYPE;
+
+#define gcmSIGNAL_OFFSET        16
+
 /******************************************************************************\
 ********************************* gcoHAL Object *********************************
 \******************************************************************************/
@@ -249,14 +276,6 @@ gcoHAL_Commit(
     IN gctBOOL Stall
     );
 
-gceSTATUS
-gcoHAL_Commit2(
-    IN gcoHAL Hal,
-    IN gctBOOL Stall,
-    IN gctPOINTER Buffer,
-    IN gctUINT32 Size
-    );
-
 /* Query the tile capabilities. */
 gceSTATUS
 gcoHAL_QueryTiled(
@@ -326,9 +345,9 @@ gcoHAL_ScheduleEvent(
 /* Destroy a surface. */
 gceSTATUS
 gcoHAL_DestroySurface(
-	IN gcoHAL Hal,
-	IN gcoSURF Surface
-	);
+    IN gcoHAL Hal,
+    IN gcoSURF Surface
+    );
 
 /******************************************************************************\
 ********************************** gcoOS Object *********************************
@@ -687,7 +706,7 @@ gcoOS_SetProfileSetting(
         IN gctBOOL Enable,
         IN gctCONST_STRING FileName
     );
-gctINT32
+gctINT32 
 gcoOS_GetMilliTime(
     void
     );
@@ -709,7 +728,7 @@ gcoOS_SetProfileSetting(
 */
 typedef enum _apiBenchIndex  {
 	APIBENCH_INDEX_FRAME,
-    APIBENCH_INDEX_DRAWARRAY,
+    APIBENCH_INDEX_DRAWARRAY,    
 	APIBENCH_INDEX_DRAWELEMENTS,
 	APIBENCH_INDEX_BUILDSTREAM,
 	APIBENCH_INDEX_INDEXBUFFER,
@@ -719,8 +738,8 @@ typedef enum _apiBenchIndex  {
     APIBENCH_INDEX_UPDATESTATE1,
 	APIBENCH_INDEX_SWAPBUFFERS,
 	APIBENCH_INDEX_DRAWIMAGE,
-	APIBENCH_INDEX_SWTEXTUREUPLOAD,
-	APIBENCH_INDEX_DIRECTTEXTURE,
+	APIBENCH_INDEX_SWTEXTUREUPLOAD,	
+	APIBENCH_INDEX_DIRECTTEXTURE,	
 	APIBENCH_INDEX_GLEGLIMAGETEXTURE,
 	APIBENCH_INDEX_DRAWTEX,
 	APIBENCH_INDEX_BUFFERDATA,
@@ -771,7 +790,7 @@ typedef struct _gcoTIMER
 	gctUINT32				start;
 	gctUINT32				end;
 	gctUINT32				totalTime;
-	gctUINT32				count;
+	gctUINT32				count;	
 }gcoTIMER;
 
  /*  global structure for api bench */
@@ -973,6 +992,7 @@ gceSTATUS
 gcoOS_CreateSignal(
     IN gcoOS Os,
     IN gctBOOL ManualReset,
+    IN gceSIGNAL_TYPE SignalType,
     OUT gctSIGNAL * Signal
     );
 
@@ -1415,6 +1435,12 @@ gcoSURF_ComputeColorMask(
     OUT gctUINT32_PTR ColorMask
     );
 
+/* Check the surface is renderable or not. */
+gceSTATUS
+gcoSURF_IsRenderable(
+	IN 	gcoSURF Surface
+	);
+
 /* Flush the surface. */
 gceSTATUS
 gcoSURF_Flush(
@@ -1476,6 +1502,13 @@ gcoSURF_ReferenceSurface(
     IN gcoSURF Surface
     );
 
+/* Decrease reference count of the surface. */
+gceSTATUS
+gcoSURF_DereferenceSurface(
+    IN gcoSURF Surface
+    );
+
+
 /* Get surface reference count. */
 gceSTATUS
 gcoSURF_QueryReferenceCount(
@@ -1488,6 +1521,13 @@ gceSTATUS
 gcoSURF_SetOrientation(
     IN gcoSURF Surface,
     IN gceORIENTATION Orientation
+    );
+
+/* Set surface resolve offset */
+gceSTATUS
+gcoSURF_SetFace(
+    IN gcoSURF Surface,
+    IN gctUINT  Face
     );
 
 /* Query surface orientation. */
@@ -1504,7 +1544,6 @@ int gcoOS_DumpBMP(
                   IN gctINT dumpWidth,
                   IN gctINT dumpHeight,
                   IN gctINT dumpStride,
-                  IN gctINT dumpBpp,
                   IN gceSURF_FORMAT format,
                   IN gceORIENTATION orientation,
                   IN gctCONST_STRING fileName
@@ -1514,11 +1553,10 @@ int gcoOS_DumpBMP(
 /* Dump surface to a BMP file. */
 gceSTATUS
 gcoSURF_DumpSurface(
-	IN gcoSURF Surface,
+	IN gcoSURF Surface, 
 	IN gctBOOL bCheckOrientation,
 	IN gctCONST_STRING fileName
 	);
-
 
 /******************************************************************************\
 ********************************* gcoDUMP Object ********************************
@@ -2059,14 +2097,13 @@ gckOS_Print(
 **
 **      ...         Optional arguments.
 */
-
 #if gcdDUMP
-gceSTATUS
-gcfDump(
-    IN gcoOS Os,
-    IN gctCONST_STRING String,
-    ...
-    );
+    gceSTATUS
+    gcfDump(
+        IN gcoOS Os,
+        IN gctCONST_STRING String,
+        ...
+        );
 #  define gcmDUMP               gcfDump
 #elif gcdHAS_ELLIPSES
 #  define gcmDUMP(...)
@@ -2101,13 +2138,13 @@ gcfDump(
 */
 
 #if gcdDUMP
-geSTATUS
-gcfDumpData(
-    IN gcoOS Os,
-    IN gctSTRING Tag,
-    IN gctPOINTER Logical,
-    IN gctSIZE_T Bytes
-    );
+    gceSTATUS
+    gcfDumpData(
+        IN gcoOS Os,
+        IN gctSTRING Tag,
+        IN gctPOINTER Logical,
+        IN gctSIZE_T Bytes
+        );
 #  define gcmDUMP_DATA          gcfDumpData
 #elif gcdHAS_ELLIPSES
 #  define gcmDUMP_DATA(...)
@@ -2149,7 +2186,8 @@ gcfDumpData(
 */
 
 #if gcdDUMP
-void gcfDumpBuffer(
+gceSTATUS
+gcfDumpBuffer(
     IN gcoOS Os,
     IN gctSTRING Tag,
     IN gctUINT32 Physical,
@@ -2173,6 +2211,100 @@ void gcfDumpBuffer(
     {
     }
 #   define gcmDUMP_BUFFER       __dummy_dump_buffer
+#endif
+
+/*******************************************************************************
+**
+**  gcmDUMP_API
+**
+**      Print a dump message for a high level API prefixed by the function name.
+**
+**  ARGUMENTS:
+**
+**      gctSTRING   Message.
+**
+**      ...         Optional arguments.
+*/
+#if gcdDUMP_API
+    gceSTATUS
+    gcfDumpApi(
+        IN gctCONST_STRING String,
+        ...
+        );
+#   define gcmDUMP_API           gcfDumpApi
+#elif gcdHAS_ELLIPSES
+#   define gcmDUMP_API(...)
+#else
+    gcmINLINE static void
+    __dummy_dump_api(
+        IN gctCONST_STRING Message,
+        ...
+        )
+    {
+    }
+#  define gcmDUMP_API           __dummy_dump_api
+#endif
+
+/*******************************************************************************
+**
+**  gcmDUMP_API_ARRAY
+**
+**      Print an array of data.
+**
+**  ARGUMENTS:
+**
+**      gctUINT32_PTR   Pointer to array.
+**      gctUINT32       Size.
+*/
+#if gcdDUMP_API
+    gceSTATUS
+    gcfDumpArray(
+        IN gctCONST_POINTER Data,
+        IN gctUINT32 Size
+    );
+#   define gcmDUMP_API_ARRAY        gcfDumpArray
+#elif gcdHAS_ELLIPSES
+#   define gcmDUMP_API_ARRAY(...)
+#else
+    gcmINLINE static void
+    __dummy_dump_api_array(
+        IN gctCONST_POINTER Data,
+        IN gctUINT32 Size
+        )
+    {
+    }
+#   define gcmDUMP_API_ARRAY        __dummy_dump_api_array
+#endif
+
+/*******************************************************************************
+**
+**  gcmDUMP_API_ARRAY_TOKEN
+**
+**      Print an array of data terminated by a token.
+**
+**  ARGUMENTS:
+**
+**      gctUINT32_PTR   Pointer to array.
+**      gctUINT32       Termination.
+*/
+#if gcdDUMP_API
+    gceSTATUS
+    gcfDumpArrayToken(
+        IN gctCONST_POINTER Data,
+        IN gctUINT32 Termination
+    );
+#   define gcmDUMP_API_ARRAY_TOKEN  gcfDumpArrayToken
+#elif gcdHAS_ELLIPSES
+#   define gcmDUMP_API_ARRAY_TOKEN(...)
+#else
+    gcmINLINE static void
+    __dummy_dump_api_array_token(
+        IN gctCONST_POINTER Data,
+        IN gctUINT32 Termination
+        )
+    {
+    }
+#   define gcmDUMP_API_ARRAY_TOKEN  __dummy_dump_api_array_token
 #endif
 
 /*******************************************************************************
@@ -2327,8 +2459,9 @@ gckOS_Verify(
         } \
         while (gcvFALSE)
 #else
-#   define gcmVERIFY_OK(func)       func
-#   define gcmkVERIFY_OK(func)      func
+#   define gcmVERIFY_OK(func) func
+
+#   define gcmkVERIFY_OK(func) func
 #endif
 
 /*******************************************************************************
@@ -2405,15 +2538,16 @@ gckOS_Verify(
         status = func; \
         if (gcmIS_ERROR(status)) \
         { \
-            prefix##TRACE(gcvLEVEL_ERROR, \
-                #prefix "ONERROR: status=%d @ %s(%d) in " __FILE__, \
-                status, __FUNCTION__, __LINE__); \
+            prefix##LOG(_GFX_LOG_ERROR_, \
+                "[GC_" #prefix "ONERROR\t] %s(%d): status=%d", \
+                __FUNCTION__, __LINE__, status); \
             goto OnError; \
         } \
     } \
     while (gcvFALSE)
 #define gcmONERROR(func)            _gcmONERROR(gcm, func)
 #define gcmkONERROR(func)           _gcmONERROR(gcmk, func)
+
 
 /*******************************************************************************
 **
@@ -2563,32 +2697,81 @@ gckOS_Verify(
        } \
        while (gcvFALSE)
 #   define gcmVERIFY_ARGUMENT_RETURN(arg, value) \
-				_gcmVERIFY_ARGUMENT_RETURN(gcm, arg, value)
+                _gcmVERIFY_ARGUMENT_RETURN(gcm, arg, value)
 #   define gcmkVERIFY_ARGUMENT_RETURN(arg, value) \
-				_gcmVERIFY_ARGUMENT_RETURN(gcmk, arg, value)
+                _gcmVERIFY_ARGUMENT_RETURN(gcmk, arg, value)
 #else
 #   define gcmVERIFY_ARGUMENT_RETURN(arg, value)
 #   define gcmkVERIFY_ARGUMENT_RETURN(arg, value)
 #endif
-void gcoOS_Log(IN unsigned int filter, IN char* msg,
+void gcoOS_Log(IN unsigned int filter, IN const char* msg, 
 			...
 			);
 
-void gckOS_Log(IN unsigned int filter, IN char* msg,
+void gckOS_Log(IN unsigned int filter, IN const char* msg, 
 			...
 			);
 
 void gcoOS_SetLogFilter(IN unsigned int filter);
 
+void gckOS_SetLogFilter(IN unsigned int filter);
+
+#define gcmLOG                  gcoOS_Log
+#define gcmkLOG                 gckOS_Log
+
+#define _gcmLOG_STATUS(prefix, tag, filter) \
+    do \
+    { \
+        prefix##LOG(filter, \
+            "[GC_" #tag "\t] %s@%d: status=%d\n", \
+            __FUNCTION__, __LINE__, status); \
+    } \
+    while (gcvFALSE)
+
+#define gcmLOG_WARNING_STATUS()         _gcmLOG_STATUS(gcm, WARNING, _GFX_LOG_WARNING_)
+#define gcmLOG_ERROR_STATUS()           _gcmLOG_STATUS(gcm, ERR_RETURN, _GFX_LOG_ERROR_)
+
+#define gcmkLOG_WARNING_STATUS()        _gcmLOG_STATUS(gcmk, WARNING, _GFX_LOG_WARNING_)
+#define gcmkLOG_ERROR_STATUS()          _gcmLOG_STATUS(gcmk, ERR_RETURN, _GFX_LOG_ERROR_)
+
+#if gcdHAS_ELLIPSES
+#define _gcmLOG_ARGS(prefix, tag, filter, TEXT, ...) \
+    do \
+    { \
+        prefix##LOG(filter, \
+            "[GC_" #tag "\t] %s@%d: " TEXT "\n", \
+            __FUNCTION__, __LINE__, ##__VA_ARGS__); \
+    } \
+    while (gcvFALSE)
+
+#define gcmLOG_WARNING_ARGS(TEXT, ...)   _gcmLOG_ARGS(gcm, WARNING, _GFX_LOG_WARNING_, TEXT, ##__VA_ARGS__)
+#define gcmLOG_ERROR_ARGS(TEXT, ...)     _gcmLOG_ARGS(gcm, ERR_RETURN, _GFX_LOG_ERROR_, TEXT, ##__VA_ARGS__)
+
+#define gcmkLOG_WARNING_ARGS(TEXT, ...)  _gcmLOG_ARGS(gcmk, WARNING, _GFX_LOG_WARNING_, TEXT, ##__VA_ARGS__)
+#define gcmkLOG_ERROR_ARGS(TEXT, ...)    _gcmLOG_ARGS(gcmk, ERR_RETURN, _GFX_LOG_ERROR_, TEXT, ##__VA_ARGS__)
+#else
+     gcmINLINE static void
+     __dummy_log_args(
+         IN gctCONST_STRING Text,
+         ...
+         )
+     {
+     }
+#define gcmLOG_WARNING_ARGS             __dummy_log_args
+#define gcmLOG_ERROR_ARGS               __dummy_log_args
+#define gcmkLOG_WARNING_ARGS            __dummy_log_args
+#define gcmkLOG_ERROR_ARGS              __dummy_log_args
+#endif
 
  /*  Logging service  */
+#define _GFX_LOG_NONE_          0x00000000
 #define _GFX_LOG_ERROR_         0x00000001
 #define _GFX_LOG_WARNING_       0x00000002
 #define _GFX_LOG_EGL_API_       0x00000004
 #define _GFX_LOG_NATIVE_API_    0x00000008
 #define _GFX_LOG_OES_API_       0x00000010
 #define _GFX_LOG_VG_API_        0x00000020
-#define _GFX_LOG_CONFIG_        0x00000040
+#define _GFX_LOG_CONFIG_        0x00000040  
 #define _GFX_LOG_INFO_          0x00000080
 #define _GFX_LOG_NOTIFY_        0x00000100
 #define _GFX_LOG_ALL_           0xffffffff
@@ -2607,21 +2790,21 @@ void gcoOS_SetLogFilter(IN unsigned int filter);
 #else
 #define OES11_API_LOG(x)
 #endif
-#define OES11_LOG(x)            gcoOS_Log x
+#define OES11_LOG(x)            gcoOS_Log x                   
 
 #if MRVL_ENABLE_OES2_API_LOG
 #define OES20_API_LOG(x)		gcoOS_Log x
 #else
 #define OES20_API_LOG(x)
 #endif
-#define OES20_LOG               gcoOS_Log x
+#define OES20_LOG(x)            gcoOS_Log x
 
 #if MRVL_ENABLE_OVG_API_LOG
 #define OVG_API_LOG(x)		    gcoOS_Log x
 #else
 #define OVG_API_LOG(x)
 #endif
-#define OVG_LOG(x)              gcoOS_Log x
+#define OVG_LOG(x)              gcoOS_Log x               
 #ifdef __cplusplus
 }
 #endif

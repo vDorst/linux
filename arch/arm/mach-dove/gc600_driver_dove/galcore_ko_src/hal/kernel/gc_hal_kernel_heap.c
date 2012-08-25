@@ -10,7 +10,7 @@
 *    This program is distributed in the hope that it will be useful,
 *    but WITHOUT ANY WARRANTY; without even the implied warranty of
 *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public Lisence for more details.
+*    GNU General Public License for more details.
 *
 *    You should have received a copy of the GNU General Public License
 *    along with this program; if not write to the Free Software
@@ -163,6 +163,7 @@ _CompactKernelHeap(
 	IN gckHEAP Heap
 	)
 {
+    gceSTATUS status;
 	gcskHEAP_PTR heap, next;
 	gctPOINTER p;
 	gcskHEAP_PTR freeList = gcvNULL;
@@ -281,7 +282,7 @@ _CompactKernelHeap(
 			gcmkTRACE_ZONE(gcvLEVEL_INFO, gcvZONE_HEAP,
 						   "Freeing heap 0x%x (%lu bytes)",
 						   heap, heap->size + gcmSIZEOF(gcskHEAP));
-			gcmkVERIFY_OK(gckOS_FreeMemory(Heap->os, heap));
+			gcmkONERROR(gckOS_FreeMemory(Heap->os, heap));
 		}
 
 		/* Acquire the mutex again. */
@@ -292,6 +293,12 @@ _CompactKernelHeap(
 	/* Success. */
 	gcmkFOOTER_NO();
 	return gcvSTATUS_OK;
+
+OnError:
+    gcmkLOG_ERROR_STATUS();
+	/* Return the status. */
+	gcmkFOOTER();
+	return status;    
 }
 
 /*******************************************************************************
@@ -372,11 +379,13 @@ gckHEAP_Construct(
 	return gcvSTATUS_OK;
 
 OnError:
+    gcmkLOG_ERROR_ARGS("status=%d, *Heap=0x%08x", status, Heap);
 	/* Roll back. */
 	if (heap != gcvNULL)
 	{
 		/* Free the heap structure. */
-		gcmkVERIFY_OK(gckOS_FreeMemory(Os, heap));
+		gcmkERR_RETURN(gckOS_FreeMemory(Os, heap));
+        heap = gcvNULL;
 	}
 
 	/* Return the status. */
@@ -404,6 +413,7 @@ gckHEAP_Destroy(
 	IN gckHEAP Heap
 	)
 {
+	gceSTATUS status;
 	gcskHEAP_PTR heap;
 #if gcdDEBUG
 	gctSIZE_T leaked = 0;
@@ -422,14 +432,19 @@ gckHEAP_Destroy(
 #endif
 
 		/* Free the heap. */
-		gcmkVERIFY_OK(gckOS_FreeMemory(Heap->os, heap));
+		gcmkONERROR(gckOS_FreeMemory(Heap->os, heap));
 	}
 
 	/* Free the mutex. */
-	gcmkVERIFY_OK(gckOS_DeleteMutex(Heap->os, Heap->mutex));
-
+    if(Heap->mutex != gcvNULL)
+    {
+        gcmkVERIFY_OK(gckOS_DeleteMutex(Heap->os, Heap->mutex));
+        Heap->mutex = gcvNULL;
+    }
+    
 	/* Free the heap structure. */
-	gcmkVERIFY_OK(gckOS_FreeMemory(Heap->os, Heap));
+    gcmkONERROR(gckOS_FreeMemory(Heap->os, Heap));
+    Heap = gcvNULL;
 
 	/* Success. */
 #if gcdDEBUG
@@ -438,6 +453,12 @@ gckHEAP_Destroy(
 	gcmkFOOTER_NO();
 #endif
 	return gcvSTATUS_OK;
+
+OnError:
+    gcmkLOG_ERROR_STATUS();
+	/* Return the status. */
+	gcmkFOOTER();
+	return status;
 }
 
 /*******************************************************************************
@@ -717,6 +738,7 @@ UseNode:
 	return gcvSTATUS_OK;
 
 OnError:
+    gcmkLOG_ERROR_ARGS("status=%d, acquired=%d", status, acquired);
 	if (acquired)
 	{
 		/* Release the mutex. */
@@ -727,7 +749,8 @@ OnError:
 	if (memory != gcvNULL)
 	{
 		/* Free the heap memory. */
-		gckOS_FreeMemory(Heap->os, memory);
+		gcmkERR_RETURN(gckOS_FreeMemory(Heap->os, memory));
+        memory =  gcvNULL;
 	}
 
 	/* Return the status. */
@@ -1044,7 +1067,7 @@ OnError:
 	/* Roll back. */
 	if (nodes != gcvNULL)
 	{
-		gcmkVERIFY_OK(
+		gcmkERR_RETURN(
 			gckOS_FreeMemory(Heap->os, nodes));
 	}
 

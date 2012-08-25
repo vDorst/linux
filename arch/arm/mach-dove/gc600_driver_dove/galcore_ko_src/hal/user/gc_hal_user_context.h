@@ -23,6 +23,27 @@
 extern "C" {
 #endif
 
+struct _gcoCTXBUF
+{
+    /* The object. */
+    gcsOBJECT                   object;
+
+    /* Pointer to gcoOS object. */
+    gcoOS                       os;
+
+    /* Pointer to gcoHARDWARE object. */
+    gcoHARDWARE                 hardware;
+
+    /* Physical address of context buffer. */
+    gctPHYS_ADDR                physical;
+
+    /* Logical address of context buffer. */
+    gctPOINTER                  logical;
+
+    /* Number of bytes in context buffer. */
+    gctSIZE_T                   bytes;
+};
+
 /* gcoCONTEXT structure that hold the current context. */
 struct _gcoCONTEXT
 {
@@ -56,8 +77,18 @@ struct _gcoCONTEXT
     gctSIZE_T                   bufferSize;
 
     /* Context buffer used for commitment. */
+#if MRVL_PRE_ALLOCATE_CTX_BUFFER
+	/* Array of phisical context buffers and their signals. */
+	gcoCTXBUF					ctxbufArray[gcdCTXBUF_SIZE_DEFAULT];
+	gctSIGNAL					ctxbufSignal[gcdCTXBUF_SIZE_DEFAULT];
+	/* Real number of context buffers pre-allocated. */
+	gctINT						ctxbufSize;
+	/* Current context buffer. */
+	gctINT						ctxbufIndex;
+#else
     gctSIZE_T                   bytes;
     gctPHYS_ADDR                physical;
+#endif
     gctPOINTER                  logical;
 
     /* Pointer to final LINK command. */
@@ -83,6 +114,9 @@ struct _gcoCONTEXT
     /* Hint array. */
     gctUINT32_PTR               hintArray;
     gctUINT32_PTR               hintIndex;
+
+    /* Skip flag */
+    gctBOOL                     skipContext;                
 };
 
 struct _gcoCMDBUF
