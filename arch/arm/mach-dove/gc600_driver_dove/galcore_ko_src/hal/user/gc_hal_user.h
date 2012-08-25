@@ -163,14 +163,6 @@ gcoHARDWARE_LoadStateBuffer(
 	IN gctSIZE_T Bytes
 	);
 
-/* Load a number of load states from external buffer. */
-gceSTATUS
-gcoHARDWARE_LoadStateExternalBuffer(
-	IN gcoHARDWARE Hardware,
-	IN gctPOINTER StateBuffer,
-	IN gctSIZE_T Size
-	);
-
 /* Load a number of load states in fixed-point (3D pipe). */
 gceSTATUS
 gcoHARDWARE_LoadStateX(
@@ -227,6 +219,12 @@ gcoHARDWARE_PreserveCmdSpace(
     IN gctSIZE_T    Size
     );
 
+gceSTATUS
+gcoHARDWARE_SkipContext(
+    IN gcoHARDWARE  Hardware,
+    IN gctBOOL      Value
+    );
+
 /* Commit the current command buffer. */
 gceSTATUS
 gcoHARDWARE_Commit(
@@ -238,6 +236,17 @@ gceSTATUS
 gcoHARDWARE_Stall(
 	IN gcoHARDWARE Hardware
 	);
+
+/* Compute the offset of the specified pixel location. */
+gceSTATUS
+gcoHARDWARE_ComputeOffset(
+    IN gctINT32 X,
+    IN gctINT32 Y,
+    IN gctUINT Stride,
+    IN gctINT BytesPerPixel,
+    IN gceTILING Tiling,
+    OUT gctUINT32_PTR Offset
+    );
 
 /* Resolve. */
 gceSTATUS
@@ -450,6 +459,17 @@ gcoHARDWARE_ConvertFormat(
 	OUT gctUINT32 * BitsPerPixel,
 	OUT gctUINT32 * BytesPerTile
 	);
+
+/* Convert face to offset */
+gceSTATUS
+gcoHARDWARE_ConvertFace(
+    IN gcoHARDWARE Hardware,
+    IN gctUINT32 Width,
+    IN gctUINT32 Height,
+    IN gceSURF_FORMAT Format,
+    IN gctUINT Face,
+    OUT gctUINT32 * Offset
+    );
 
 /* Align size to tile boundary. */
 gceSTATUS
@@ -1216,6 +1236,13 @@ gcoHARDWARE_GetClosestTextureFormat(
 	OUT gceSURF_FORMAT* OutFormat
 	);
 
+/* Query the texture mipmap support. */
+gceSTATUS
+gcoHARDWARE_QueryTexture_MipMap(
+	IN gctUINT Width,
+	IN gctUINT Height
+	);
+
 /* Query the texture support. */
 gceSTATUS
 gcoHARDWARE_QueryTexture(
@@ -1941,6 +1968,15 @@ gcoHARDWARE_MonoBlit(
 	IN gctUINT32 BgRop
 	);
 
+/* Get Hw status*/
+gceSTATUS
+gcoHARDWARE_GetHWStatus(
+	IN gcoHARDWARE Hardware,
+	OUT gctBOOL_PTR* Idle,
+	OUT gctINT_PTR Count,
+	OUT gctINT_PTR CurrentCmdIndex
+	);
+
 /******************************************************************************\
 ******************************** gcoBUFFER Object *******************************
 \******************************************************************************/
@@ -2011,6 +2047,15 @@ gcoBUFFER_Commit(
 	IN gcoQUEUE Queue
 	);
 
+/*get the status of command buffer*/
+gceSTATUS
+gcoBUFFER_Status(
+	IN    gcoBUFFER Buffer,
+	OUT gctBOOL_PTR* Idle,
+	OUT gctINT_PTR Count,
+	OUT gctINT_PTR CurrentCmdIndex
+	);
+	
 /******************************************************************************\
 ******************************** gcoCMDBUF Object *******************************
 \******************************************************************************/
@@ -2080,6 +2125,29 @@ gcoCONTEXT_PostCommit(
 #define PENDING_FREED_MEMORY_SIZE_LIMIT		(4 * 1024 * 1024)
 #endif
 
+#if MRVL_PRE_ALLOCATE_CTX_BUFFER
+
+/******************************************************************************\
+******************************** gcoCTXBUF Object *******************************
+\******************************************************************************/
+
+/* Construct a new gcoCTXBUF object. */
+gceSTATUS
+gcoCTXBUF_Construct(
+	IN gcoOS Os,
+	IN gcoHARDWARE Hardware,
+	IN gctSIZE_T Bytes,
+	OUT gcoCTXBUF * Buffer
+	);
+
+/* Destroy an gcoCTXBUF object. */
+gceSTATUS
+gcoCTXBUF_Destroy(
+	IN gcoCTXBUF Buffer
+	);
+
+#endif
+
 /******************************************************************************\
 ********************************* gcoHAL object *********************************
 \******************************************************************************/
@@ -2131,6 +2199,7 @@ struct _gcoHAL
     gctUINT32                   reserveMemorySize[RESERVE_MEMORY_NUM];
     gctUINT32                   streamAlign;
     gctUINT32                   indexAlign;
+    gctBOOL                     DisableReserveMemory;
 #endif
 };
 
@@ -2235,6 +2304,10 @@ typedef struct _gcsSURF_INFO
 
 	/* Hierarchical Z buffer pointer. */
 	gcsSURF_NODE			hzNode;
+
+	/* face for resolve */
+	gctUINT                 face;
+	
 }
 gcsSURF_INFO;
 

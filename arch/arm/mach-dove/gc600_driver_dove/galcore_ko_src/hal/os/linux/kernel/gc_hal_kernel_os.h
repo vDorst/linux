@@ -10,7 +10,7 @@
 *    This program is distributed in the hope that it will be useful,
 *    but WITHOUT ANY WARRANTY; without even the implied warranty of
 *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public Lisence for more details.
+*    GNU General Public License for more details.
 *
 *    You should have received a copy of the GNU General Public License
 *    along with this program; if not write to the Free Software
@@ -23,6 +23,19 @@
 
 #ifndef __gc_hal_kernel_os_h_
 #define __gc_hal_kernel_os_h_
+
+/* 
+* Allocate video memory from low memory back when ALLOC_HIGHMEM set to 0 
+* Allocate video memory from hight memory back when ALLOC_HIGHMEM set to 1
+*
+* When we can not reserve physical continious memory (video memory), please 
+* set ALLOC_HIGHMEM set to 1 and Allocate video memory from hight memory back.
+*/
+#define ALLOC_HIGHMEM 0
+
+#define ALLOC_ALIGN_BYTES   64
+
+#define GC_INVALID_PHYS_ADDR    ~0U
 
 typedef struct _LINUX_MDL_MAP
 {
@@ -37,9 +50,12 @@ typedef struct _LINUX_MDL
 {
 	gctINT					pid;
 	char *					addr;
+    char *                  addr_free;    /* Alighment used, really allocated memory pointer, for free use.*/
 
 #ifdef NO_DMA_COHERENT
+#if !ALLOC_HIGHMEM
 	gctPOINTER				kaddr;
+#endif
 #endif /* NO_DMA_COHERENT */
 
 	gctINT					numPages;

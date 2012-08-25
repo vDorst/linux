@@ -10,7 +10,7 @@
 *    This program is distributed in the hope that it will be useful,
 *    but WITHOUT ANY WARRANTY; without even the implied warranty of
 *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public Lisence for more details.
+*    GNU General Public License for more details.
 *
 *    You should have received a copy of the GNU General Public License
 *    along with this program; if not write to the Free Software
@@ -19,26 +19,34 @@
 *****************************************************************************/
 
 
+#include <linux/device.h>
+#include "gc_hal_kernel_linux.h"
+#include "gc_hal_driver.h"
+#include "gc_hal_user_context.h"
+
 #ifdef ENABLE_GPU_CLOCK_BY_DRIVER
 #undef ENABLE_GPU_CLOCK_BY_DRIVER
 #endif
 
-#if defined(CONFIG_DOVE_GPU)
+#if (defined CONFIG_DOVE_GPU)
 #define ENABLE_GPU_CLOCK_BY_DRIVER	0
 #else
 #define ENABLE_GPU_CLOCK_BY_DRIVER	1
 #endif
 
 /* You can comment below line to use legacy driver model */
-#define USE_PLATFORM_DRIVER 1
-#include <linux/device.h>
-
-#include "gc_hal_kernel_linux.h"
-#include "gc_hal_driver.h"
-#include "gc_hal_user_context.h"
+#define USE_PLATFORM_DRIVER         1
 
 #if USE_PLATFORM_DRIVER
 #include <linux/platform_device.h>
+#endif
+
+#if MRVL_PLATFORM_MMP2
+#include <mach/cputype.h>
+#endif
+
+#if MRVL_CONFIG_ENABLE_DVFM
+#include <mach/dvfm.h>
 #endif
 
 MODULE_DESCRIPTION("Vivante Graphics Driver");
@@ -46,38 +54,30 @@ MODULE_LICENSE("GPL");
 
 struct class *gpuClass;
 
-#if defined CONFIG_CPU_PXA910
-    #if POWER_OFF_GC_WHEN_IDLE
-        gckGALDEVICE galDevice;
-    #else
-        static gckGALDEVICE galDevice;
-    #endif
-#else
-    static gckGALDEVICE galDevice;
-#endif
+static gckGALDEVICE galDevice;
 
 static int major = 199;
 module_param(major, int, 0644);
 
 #ifdef CONFIG_MACH_CUBOX
-int irqLine = 42;
-long registerMemBase = 0xf1840000;
-ulong contiguousBase = 0x8000000;
+    int irqLine = 42;
+    long registerMemBase = 0xf1840000;
+    ulong contiguousBase = 0x8000000;
 #else
-int irqLine = 8;
-long registerMemBase = 0xc0400000;
-ulong contiguousBase = 0;
+    int irqLine = 8;
+    long registerMemBase = 0xc0400000;
+    ulong contiguousBase = 0;
 #endif
-module_param(irqLine, int, 0644);
 
+module_param(irqLine, int, 0644);
 module_param(registerMemBase, long, 0644);
 
 ulong registerMemSize = 256 << 10;
 module_param(registerMemSize, ulong, 0644);
 
+
 long contiguousSize = 32 << 20;
 module_param(contiguousSize, long, 0644);
-
 module_param(contiguousBase, ulong, 0644);
 
 long bankSize = 32 << 20;
@@ -100,206 +100,70 @@ module_param(showArgs, int, 0644);
 
 ulong gpu_frequency = 312;
 module_param(gpu_frequency, ulong, 0644);
-#ifdef CONFIG_PXA_DVFM
-#include <mach/dvfm.h>
-#include <mach/pxa3xx_dvfm.h>
-#include <linux/delay.h>
 
-static int galcore_dvfm_notifier(struct notifier_block *nb,
-				unsigned long val, void *data);
-
-static struct notifier_block galcore_notifier_block = {
-	.notifier_call = galcore_dvfm_notifier,
-};
-#endif
-
+/******************************************************************************\
+* Create a data entry system using proc for GC
+\******************************************************************************/
 #define MRVL_CONFIG_PROC
+
 #ifdef MRVL_CONFIG_PROC
 #include <linux/proc_fs.h>
+
 #define GC_PROC_FILE    "driver/gc"
+#define _GC_OBJ_ZONE	gcvZONE_DRIVER
+
 static struct proc_dir_entry * gc_proc_file;
-
-#if defined CONFIG_CPU_PXA910
-#if POWER_OFF_GC_WHEN_IDLE
-#define MUTEX_CONTEXT 0
-#define MUTEX_QUEUE 0
-
-gceSTATUS _power_off_gc(gckGALDEVICE device, gctBOOL early_suspend)
-{
-    /* turn off gc */
-    if (device->kernel->hardware->chipPowerState != gcvPOWER_OFF)
-    {
-        gceSTATUS status;
-        gckCOMMAND command;
-
-        command = device->kernel->command;
-        printk("[%s]\t@%d\tC:0x%p\tQ:0x%p\n", __func__, __LINE__, command->mutexContext, command->mutexQueue);
-
-        // stall
-        {
-            /* Acquire the context switching mutex so nothing else can be committed. */
-#if MUTEX_CONTEXT
-            gcmkONERROR(
-                gckOS_AcquireMutex(device->kernel->hardware->os,
-                                   command->mutexContext,
-                                   gcvINFINITE));
-#endif
-            if (gcvTRUE == early_suspend)
-            {
-                gcmkONERROR(
-                    gckCOMMAND_Stall(command));
-            }
-        }
-
-        // stop
-        {
-
-            /* Stop the command parser. */
-            gcmkONERROR(
-                    gckCOMMAND_Stop(command));
-
-#if MUTEX_QUEUE
-            /* Grab the command queue mutex so nothing can get access to the command queue. */
-            gcmkONERROR(
-                    gckOS_AcquireMutex(device->kernel->hardware->os,
-                                       command->mutexQueue,
-                                       gcvINFINITE));
-#endif
-        }
-
-        // disable irq and clock
-        {
-            gckOS_SuspendInterrupt(device->os);
-            gckOS_ClockOff();
-        }
-
-        galDevice->kernel->hardware->chipPowerState = gcvPOWER_OFF;
-
-    }
-
-    return gcvSTATUS_OK;
-
-OnError:
-    printk("ERROR: %s has error \n",__func__);
-    return gcvSTATUS_OK;
-}
-
-
-gceSTATUS _power_on_gc(gckGALDEVICE device)
-{
-    /* turn on gc */
-    if(device->kernel->hardware->chipPowerState != gcvPOWER_ON)
-    {
-        gceSTATUS status;
-
-        // enable clock and irq
-        {
-            gckOS_ClockOn(0);
-            gckOS_ResumeInterrupt(device->os);
-        }
-        // INITIALIZE
-        {
-            /* Initialize hardware. */
-            gcmkONERROR(
-                gckHARDWARE_InitializeHardware(device->kernel->hardware));
-
-            gcmkONERROR(
-                gckHARDWARE_SetFastClear(device->kernel->hardware,
-                                         device->kernel->hardware->allowFastClear,
-                                         device->kernel->hardware->allowCompression));
-
-            /* Force the command queue to reload the next context. */
-            device->kernel->command->currentContext = 0;
-        }
-
-        /* Sleep for 1ms, to make sure everything is powered on. */
-//        mdelay(1);//gcmVERIFY_OK(gcoOS_Delay(galDevice->os, 1));
-
-        // start
-        {
-#if MUTEX_QUEUE
-            /* Release the command mutex queue. */
-            gcmkONERROR(
-                gckOS_ReleaseMutex(device->kernel->hardware->os,
-                                   device->kernel->command->mutexQueue));
-#endif
-            /* Start the command processor. */
-            gcmkONERROR(
-                gckCOMMAND_Start(device->kernel->command));
-        }
-
-        // release_context
-        {
-#if MUTEX_CONTEXT
-            /* Release the context switching mutex. */
-            gcmkVERIFY_OK(
-                gckOS_ReleaseMutex(device->kernel->hardware->os,
-                                   device->kernel->command->mutexContext));
-#endif
-        }
-
-        printk("[%s]\t@%d\tC:0x%p\tQ:0x%p\n", __func__, __LINE__, device->kernel->command->mutexContext, device->kernel->command->mutexQueue);
-        device->kernel->hardware->chipPowerState = gcvPOWER_ON;
-        //galDevice->kernel->notifyIdle = gcvTRUE;
-    }
-
-    return gcvSTATUS_TRUE;
-OnError:
-    printk("ERROR: %s has error \n",__func__);
-
-    return gcvSTATUS_FALSE;
-}
-
-static gceSTATUS _wake_up_gc(gckGALDEVICE device)
-{
-    static gctINT count = 0;
-//    if(gcvPM_EARLY_SUSPEND == device->currentPMode)
-    {
-        ++count;
-        if (device->printPID)
-            printk(">>>[%s]\t@%d\tN:0x%x\n", __func__, __LINE__, count);
-
-        _power_on_gc(device);
-
-        if (device->printPID)
-            printk("<<<[%s]\t@%d\tN:0x%x\n", __func__, __LINE__, count);
-    }
-
-    return gcvSTATUS_TRUE;
-}
-#endif
-#endif
 
 /* cat /proc/driver/gc will print gc related msg */
 static ssize_t gc_proc_read(struct file *file,
     char __user *buffer, size_t count, loff_t *offset)
 {
+    gceSTATUS status;
 	ssize_t len = 0;
 	char buf[1000];
     gctUINT32 idle;
+    gctBOOL   isIdle;
     gctUINT32 clockControl;
 
-    gcmkVERIFY_OK(gckHARDWARE_GetIdle(galDevice->kernel->hardware, gcvFALSE, &idle));
-	len += sprintf(buf+len, "idle register: 0x%02x\n", idle);
+    len += sprintf(buf+len, "%s(%s)\n", _VENDOR_STRING_, _GC_VERSION_STRING_);
+#ifdef _DEBUG
+    len += sprintf(buf+len, "DEBUG VERSION\n");
+#else
+    len += sprintf(buf+len, "RELEASE VERSION\n");
+#endif
 
-    gckOS_ReadRegister(galDevice->os, 0x00000, &clockControl);
+    gcmkONERROR(gckHARDWARE_GetIdle(galDevice->kernel->hardware, gcvFALSE, &idle));
+    gcmkONERROR(gckHARDWARE_QueryIdle(galDevice->kernel->hardware, &isIdle));
+    len += sprintf(buf+len, "idle register: 0x%02x, hardware is %s\n", idle, (gcvTRUE == isIdle)?"idle":"busy");
+
+    gcmkONERROR(gckOS_ReadRegister(galDevice->os, 0x00000, &clockControl));
     len += sprintf(buf+len, "clockControl register: 0x%02x\n", clockControl);
 
-#ifdef CONFIG_PXA_DVFM
-	len += sprintf(buf+len, "mode:\tDOCS(%d)D1(%d)D2(%d)CG(%d)\n\tDebug(%d)Pid(%d)Reset(%d)\n",
-		           galDevice->enableD0CS,
-		           galDevice->enableD1,
-		           galDevice->enableD2,
-		           galDevice->enableCG,
-		           galDevice->needD2DebugInfo,
-		           galDevice->printPID,
-		           galDevice->needResetAfterD2);
-#endif
+	len += sprintf(buf+len, "print mode:\tPid(%d) Reset(%d) DumpCmdBuf(%d)\n",
+                    galDevice->printPID, galDevice->silentReset, galDevice->kernel->command->dumpCmdBuf);
+
+	len += sprintf(buf+len, "GC memory usage profile:\n");
+
+	len += sprintf(buf+len, "Total reserved video memory: %ld KB\n", galDevice->reservedMem/1024);
+
+	len += sprintf(buf+len, "Used video mem: %d KB\tcontiguous: %d KB\tvirtual: %d KB\n", galDevice->vidMemUsage/1024,
+							galDevice->contiguousMemUsage/1024, galDevice->virtualMemUsage/1024);
+
+	if (galDevice->kernel->mmu)
+		len += sprintf(buf+len, "MMU Entries usage(PageCount): Total(%d), Used(%d)\n", galDevice->kernel->mmu->pageTableEntries,galDevice->kernel->mmu->pageTableUsedEntries);
 
 	return simple_read_from_buffer(buffer, count, offset, buf, len);
 
+OnError:
     return 0;
 }
+
+#if MRVL_PRINT_CMD_BUFFER
+extern gceSTATUS
+_PrintAllCmdBuffer(
+	gckCOMMAND Command
+	);
+#endif
 
 /* echo xx > /proc/driver/gc set ... */
 static ssize_t gc_proc_write(struct file *file,
@@ -313,138 +177,178 @@ static ssize_t gc_proc_write(struct file *file,
 	if(copy_from_user(messages, buff, len))
 		return -EFAULT;
 
-    printk("\n");
+    gcmkPRINT("\n");
     if(strncmp(messages, "printPID", 8) == 0)
     {
         galDevice->printPID = galDevice->printPID ? gcvFALSE : gcvTRUE;
-        printk("==>Change printPID to %s\n", galDevice->printPID ? "gcvTRUE" : "gcvFALSE");
+        gcmkPRINT("==>Change printPID to %s\n", galDevice->printPID ? "gcvTRUE" : "gcvFALSE");
+    }
+    else if(strncmp(messages, "powerDebug", 10) == 0)
+    {
+        galDevice->powerDebug= galDevice->powerDebug ? gcvFALSE : gcvTRUE;
     }
     else if(strncmp(messages, "profile", 7) == 0)
     {
-        gctUINT32 idleTime, timeSlice;
-        gctUINT32 start,end;
-        timeSlice = 10000;
-        start = gckOS_GetTicks();
-        gckOS_IdleProfile(galDevice->os, &timeSlice, &idleTime);
-        end = gckOS_GetTicks();
-
-        printk("idle:total [%d, %d]\n", idleTime, timeSlice);
-        printk("profile cost %d\n", end - start);
+        sscanf(messages+7,"%d %d %d %d",
+            &galDevice->profileStep,&galDevice->profileTimeSlice,&galDevice->profileTailTimeSlice,&galDevice->idleThreshold);
+        gcmkPRINT("==>Change profling [step timeSlice tailTimeSlice threshold] to be [%d %d %d %d]\n",
+            galDevice->profileStep,galDevice->profileTimeSlice,galDevice->profileTailTimeSlice,galDevice->idleThreshold);
     }
     else if(strncmp(messages, "hang", 4) == 0)
     {
 		galDevice->kernel->hardware->hang = galDevice->kernel->hardware->hang ? gcvFALSE : gcvTRUE;
     }
-    else if(strncmp(messages, "reset", 5) == 0)
+    else if(strncmp(messages, "reset2", 6) == 0)
     {
-        galDevice->reset = galDevice->reset ? gcvFALSE : gcvTRUE;
+        gckOS_Reset(galDevice->os);
     }
-#ifdef CONFIG_PXA_DVFM
-    else if(strncmp(messages, "d2debug", 7) == 0)
+    else if(strncmp(messages, "memFail", 7) == 0)
     {
-        galDevice->needD2DebugInfo = galDevice->needD2DebugInfo ? gcvFALSE : gcvTRUE;
+        gctUINT32 para = 0xFFFFFFFF;
+        sscanf(messages+7, "%d", &para);
+        galDevice->memRandomFailRate = para;
+        gcmkPRINT("==>Change memory random fail rate to %d%\n", galDevice->memRandomFailRate);
     }
-    else if(strncmp(messages, "D1", 2) == 0)
+    else if(strncmp(messages, "irq", 3) == 0)
     {
-        galDevice->enableD1 = galDevice->enableD1 ? gcvFALSE : gcvTRUE;
-        gckOS_SetConstraint(galDevice->os, gcvTRUE, gcvTRUE);
+        gctUINT32 enable  = ~0U;
+
+        sscanf(messages+3, "%d", &enable);
+
+        switch (enable) {
+            case 0:
+                /* disable GC interrupt line */
+                gckOS_SuspendInterrupt(galDevice->os);
+                break;
+            case 1:
+                /* enable GC interrupt line */
+                gckOS_ResumeInterrupt(galDevice->os);
+                break;
+            default:
+                gcmkPRINT("[galcore] Usage: echo irq [0|1] > /proc/driver/gc");
+        }
     }
-    else if(strncmp(messages, "D2", 2) == 0)
+    else if(strncmp(messages, "log", 3) == 0)
     {
-        galDevice->enableD2 = galDevice->enableD2 ? gcvFALSE : gcvTRUE;
-        gckOS_SetConstraint(galDevice->os, gcvTRUE, gcvTRUE);
+        gctUINT32 filter = _GFX_LOG_NONE_;
+        gctUINT32 level  = _GFX_LOG_NONE_;
+        /*
+        @Description
+            Only deal with the lowest two bits of input value
+            so level 5(0x101) is functional equivalent to level 1(0x001)
+        @level  Val  Hex    Description
+                0   0x00    print nothing
+                1   0x01    print error log only
+                2   0x10    print warning log only
+                3   0x11    print error and warning info
+        @Sample
+            echo log 0 > /proc/driver/gc    # Disable error log print
+            echo log 3 > /proc/driver/gc    # Enable error & warning log print
+        */
+        sscanf(messages+3, "%d", &level);
+
+        if ((level & _GFX_LOG_ERROR_) != _GFX_LOG_NONE_)
+            filter |= _GFX_LOG_ERROR_;
+        if ((level & _GFX_LOG_WARNING_) != _GFX_LOG_NONE_)
+            filter |= _GFX_LOG_WARNING_;
+        gckOS_SetLogFilter(filter);
+        gcmkPRINT("==>Change log level to %d", filter);
     }
-    else if(strncmp(messages, "D0", 2) == 0)
+    else if(strncmp(messages, "silentReset", 11) == 0)
     {
-        galDevice->enableD0CS= galDevice->enableD0CS ? gcvFALSE : gcvTRUE;
-        gckOS_SetConstraint(galDevice->os, gcvTRUE, gcvTRUE);
+        gctUINT32 para = 0xFFFFFFFF;
+
+        sscanf(messages+11, "%d", &para);
+
+        switch(para)
+        {
+        case 0:
+            galDevice->silentReset = gcvFALSE;
+            gcmkPRINT("==>Change silentReset to %s\n", galDevice->silentReset ? "gcvTRUE" : "gcvFALSE");
+            break;
+        case 1:
+            galDevice->silentReset = gcvTRUE;
+            gcmkPRINT("==>Change silentReset to %s\n", galDevice->silentReset ? "gcvTRUE" : "gcvFALSE");
+            break;
+        default:
+            gcmkPRINT("usage:  \n \
+            to enable silent reset:     #echo silentReset 1 > /proc/driver/gc \n \
+            to disable silent reset:    #echo silentReset 0 > /proc/driver/gc \n");
+            break;
+        }
     }
-    else if(strncmp(messages, "CG", 2) == 0)
+    else if(strncmp(messages, "dumpCmdBuf", 10) == 0)
     {
-        galDevice->enableCG= galDevice->enableCG ? gcvFALSE : gcvTRUE;
-        gckOS_SetConstraint(galDevice->os, gcvTRUE, gcvTRUE);
+        gctUINT32 para = 0xFFFFFFFF;
+
+        sscanf(messages+10, "%d", &para);
+
+        switch(para)
+        {
+        case 0:
+            galDevice->kernel->command->dumpCmdBuf = gcvFALSE;
+            gcmkPRINT("==>Change dumpCmdBuf to %s\n", galDevice->kernel->command->dumpCmdBuf ? "gcvTRUE" : "gcvFALSE");
+            break;
+        case 1:
+            galDevice->kernel->command->dumpCmdBuf = gcvTRUE;
+            gcmkPRINT("==>Change dumpCmdBuf to %s\n", galDevice->kernel->command->dumpCmdBuf ? "gcvTRUE" : "gcvFALSE");
+            break;
+        default:
+            gcmkPRINT("usage:  \n \
+            to enable dump cmd buffer   #echo dumpCmdBuf 1 > /proc/driver/gc \n \
+            to disable dump cmd buffer  #echo dumpCmdBuf 0 > /proc/driver/gc \n");
+            break;
+        }
     }
-    else if(strncmp(messages, "needreset", 9) == 0)
+#if MRVL_PRINT_CMD_BUFFER
+    else if(strncmp(messages, "dumpall", 7) == 0)
     {
-        galDevice->needResetAfterD2 = galDevice->needResetAfterD2 ? gcvFALSE : gcvTRUE;
+        _PrintAllCmdBuffer(galDevice->kernel->command);
     }
 #endif
+    else if(strncmp(messages, "clkoffonly", 10) == 0)
+    {
+        galDevice->clkOffOnly= galDevice->clkOffOnly? gcvFALSE : gcvTRUE;
+        gcmkPRINT("==>Change clkOffOnly to %s\n", galDevice->clkOffOnly ? "gcvTRUE" : "gcvFALSE");
+    }
+    else if(strncmp(messages, "offidle", 7) == 0)
+    {
+        galDevice->powerOffWhenIdle = galDevice->powerOffWhenIdle? gcvFALSE : gcvTRUE;
+        gcmkPRINT("==>Change powerOffWhenIdle to %s\n", galDevice->powerOffWhenIdle ? "gcvTRUE" : "gcvFALSE");
+    }
     else if(strncmp(messages, "su", 2) == 0)
     {
-        gceSTATUS status;
-
-        if(galDevice->kernel->hardware->chipPowerState != gcvPOWER_OFF)
-        {
-            status = gckHARDWARE_SetPowerManagementState(galDevice->kernel->hardware, gcvPOWER_OFF);
-            if (gcmIS_ERROR(status))
-            {
-                return -1;
-            }
-
-            gckOS_SuspendInterrupt(galDevice->os);
-            gckOS_ClockOff();
-        }
+        /* gckOS_PowerOff(galDevice->os); */
     }
     else if(strncmp(messages, "re", 2) == 0)
     {
-        gceSTATUS status;
-
-        if(galDevice->kernel->hardware->chipPowerState != gcvPOWER_ON)
-        {
-            gckOS_ClockOn(0);
-            gckOS_ResumeInterrupt(galDevice->os);
-
-            status = gckHARDWARE_SetPowerManagementState(galDevice->kernel->hardware, gcvPOWER_ON);
-		if (gcmIS_ERROR(status))
-		{
-			return -1;
-		}
-        }
+        /* gckOS_PowerOn(galDevice->os); */
     }
     else if(strncmp(messages, "stress", 6) == 0)
     {
         int i;
-         /* struct vmalloc_info vmi; */
+        static int count = 0;
 
-     /* {get_vmalloc_info(&vmi);printk("%s,%d,VmallocUsed: %8lu kB\n",__func__,__LINE__,vmi.used >> 10); } */
+        sscanf(messages+6,"%d", &count);
+        /* struct vmalloc_info vmi; */
+
+        /* {get_vmalloc_info(&vmi);gcmkPRINT("%s,%d,VmallocUsed: %8lu kB\n",__func__,__LINE__,vmi.used >> 10); } */
 
 #ifdef _DEBUG
-	gckOS_SetDebugLevel(gcvLEVEL_VERBOSE);
-	gckOS_SetDebugZone(1023);
+    	gckOS_SetDebugLevel(gcvLEVEL_VERBOSE);
+    	gckOS_SetDebugZone(1023);
 #endif
 
-        for(i=0;i<20000;i++)
+        for(i=0;i<count;i++)
         {
-            gceSTATUS status;
             static int count = 0;
 
-            printk("count:%d\n",count++);
-            printk("!!!\t");
-            if(galDevice->kernel->hardware->chipPowerState != gcvPOWER_OFF)
-            {
-                status = gckHARDWARE_SetPowerManagementState(galDevice->kernel->hardware, gcvPOWER_OFF);
-		if (gcmIS_ERROR(status))
-		{
-			return -1;
-		}
-
-                gckOS_SuspendInterrupt(galDevice->os);
-                gckOS_ClockOff();
-
-            }
-            printk("@@@\t");
-            if(galDevice->kernel->hardware->chipPowerState != gcvPOWER_ON)
-            {
-                gckOS_ClockOn(0);
-                gckOS_ResumeInterrupt(galDevice->os);
-
-                status = gckHARDWARE_SetPowerManagementState(galDevice->kernel->hardware, gcvPOWER_ON);
-		if (gcmIS_ERROR(status))
-		{
-			return -1;
-		}
-            }
-            printk("###\n");
+            gcmkPRINT("count:%d\n",count++);
+            gcmkPRINT("!!!\t");
+            /* gckOS_PowerOff(galDevice->os); */
+            gcmkPRINT("@@@\t");
+            /* gckOS_PowerOn(galDevice->os); */
+            gcmkPRINT("###\n");
         }
 
     }
@@ -452,86 +356,110 @@ static ssize_t gc_proc_write(struct file *file,
     {
 #ifdef _DEBUG
         static int count = 0;
+        gctINT debugLevel = gcvLEVEL_NONE;
+        gctINT debugZone = 0;
 
-        if(count%2 == 0)
-        {
-		gckOS_SetDebugLevel(gcvLEVEL_VERBOSE);
-		gckOS_SetDebugZone(1023);
-        }
-        else
-        {
-            gckOS_SetDebugLevel(gcvLEVEL_NONE);
-		gckOS_SetDebugZone(0);
-        }
+        sscanf(messages+5,"%d %d", &debugLevel,&debugZone);
+
+
+        /*
+            #define gcvLEVEL_NONE           -1
+            #define gcvLEVEL_ERROR          0
+            #define gcvLEVEL_WARNING        1
+            #define gcvLEVEL_INFO           2
+            #define gcvLEVEL_VERBOSE        3
+        */
+
+        /*
+            #define gcvZONE_OS              (1 << 0)
+            #define gcvZONE_HARDWARE        (1 << 1)
+            #define gcvZONE_HEAP            (1 << 2)
+
+            #define gcvZONE_KERNEL          (1 << 3)
+            #define gcvZONE_VIDMEM          (1 << 4)
+            #define gcvZONE_COMMAND         (1 << 5)
+            #define gcvZONE_DRIVER          (1 << 6)
+            #define gcvZONE_CMODEL          (1 << 7)
+            #define gcvZONE_MMU             (1 << 8)
+            #define gcvZONE_EVENT           (1 << 9)
+            #define gcvZONE_DEVICE          (1 << 10)
+        */
+
         count++;
+        gckOS_SetDebugLevel(debugLevel);
+        gckOS_SetDebugZone(debugZone);
+        gcmkPRINT("==>Change Debuglevel to %s, DebugZone to %d, Count:%d\n",
+            (debugLevel == gcvLEVEL_VERBOSE) ? "gcvLEVEL_VERBOSE" : "gcvLEVEL_NONE",
+            debugZone,
+            count);
 #endif
     }
     else if(strncmp(messages, "16", 2) == 0)
     {
-		printk("frequency change to 1/16\n");
+		gcmkPRINT("frequency change to 1/16\n");
         /* frequency change to 1/16 */
         gcmkVERIFY_OK(gckOS_WriteRegister(galDevice->os,0x00000,0x210));
         /* Loading the frequency scaler. */
-	gcmkVERIFY_OK(gckOS_WriteRegister(galDevice->os,0x00000,0x010));
+    	gcmkVERIFY_OK(gckOS_WriteRegister(galDevice->os,0x00000,0x010));
 
     }
     else if(strncmp(messages, "32", 2) == 0)
     {
-		printk("frequency change to 1/32\n");
+		gcmkPRINT("frequency change to 1/32\n");
         /* frequency change to 1/32*/
         gcmkVERIFY_OK(gckOS_WriteRegister(galDevice->os,0x00000,0x208));
         /* Loading the frequency scaler. */
-	gcmkVERIFY_OK(gckOS_WriteRegister(galDevice->os,0x00000,0x008));
+    	gcmkVERIFY_OK(gckOS_WriteRegister(galDevice->os,0x00000,0x008));
 
     }
 	else if(strncmp(messages, "64", 2) == 0)
     {
-		printk("frequency change to 1/64\n");
+		gcmkPRINT("frequency change to 1/64\n");
         /* frequency change to 1/64 */
         gcmkVERIFY_OK(gckOS_WriteRegister(galDevice->os,0x00000,0x204));
         /* Loading the frequency scaler. */
-	gcmkVERIFY_OK(gckOS_WriteRegister(galDevice->os,0x00000,0x004));
+    	gcmkVERIFY_OK(gckOS_WriteRegister(galDevice->os,0x00000,0x004));
 
     }
     else if('1' == messages[0])
     {
-        printk("frequency change to full speed\n");
+        gcmkPRINT("frequency change to full speed\n");
         /* frequency change to full speed */
         gcmkVERIFY_OK(gckOS_WriteRegister(galDevice->os,0x00000,0x300));
         /* Loading the frequency scaler. */
-	gcmkVERIFY_OK(gckOS_WriteRegister(galDevice->os,0x00000,0x100));
+    	gcmkVERIFY_OK(gckOS_WriteRegister(galDevice->os,0x00000,0x100));
 
     }
     else if('2' == messages[0])
     {
-        printk("frequency change to 1/2\n");
+        gcmkPRINT("frequency change to 1/2\n");
         /* frequency change to 1/2 */
         gcmkVERIFY_OK(gckOS_WriteRegister(galDevice->os,0x00000,0x280));
         /* Loading the frequency scaler. */
-	gcmkVERIFY_OK(gckOS_WriteRegister(galDevice->os,0x00000,0x080));
+    	gcmkVERIFY_OK(gckOS_WriteRegister(galDevice->os,0x00000,0x080));
 
     }
     else if('4' == messages[0])
     {
-        printk("frequency change to 1/4\n");
+        gcmkPRINT("frequency change to 1/4\n");
         /* frequency change to 1/4 */
         gcmkVERIFY_OK(gckOS_WriteRegister(galDevice->os,0x00000,0x240));
         /* Loading the frequency scaler. */
-	gcmkVERIFY_OK(gckOS_WriteRegister(galDevice->os,0x00000,0x040));
+    	gcmkVERIFY_OK(gckOS_WriteRegister(galDevice->os,0x00000,0x040));
 
     }
     else if('8' == messages[0])
     {
-        printk("frequency change to 1/8\n");
+        gcmkPRINT("frequency change to 1/8\n");
         /* frequency change to 1/8 */
         gcmkVERIFY_OK(gckOS_WriteRegister(galDevice->os,0x00000,0x220));
         /* Loading the frequency scaler. */
-	gcmkVERIFY_OK(gckOS_WriteRegister(galDevice->os,0x00000,0x020));
+    	gcmkVERIFY_OK(gckOS_WriteRegister(galDevice->os,0x00000,0x020));
 
     }
     else
     {
-        printk("unknown echo\n");
+        gcmkPRINT("unknown echo\n");
     }
 
     return len;
@@ -544,20 +472,23 @@ static struct file_operations gc_proc_ops = {
 
 static void create_gc_proc_file(void)
 {
-	gc_proc_file = create_proc_entry(GC_PROC_FILE, 0644, NULL);
+	gc_proc_file = create_proc_entry(GC_PROC_FILE, 0644, gcvNULL);
 	if (gc_proc_file) {
 		gc_proc_file->proc_fops = &gc_proc_ops;
 	} else
-		printk("[galcore] proc file create failed!\n");
+		gcmkPRINT("[galcore] proc file create failed!\n");
 }
 
 static void remove_gc_proc_file(void)
 {
-	remove_proc_entry(GC_PROC_FILE, NULL);
+	remove_proc_entry(GC_PROC_FILE, gcvNULL);
 }
 
 #endif
 
+/******************************************************************************\
+* Driver operations definition
+\******************************************************************************/
 static int drv_open(struct inode *inode, struct file *filp);
 static int drv_release(struct inode *inode, struct file *filp);
 static long drv_ioctl(struct file *filp,
@@ -577,13 +508,13 @@ int drv_open(struct inode *inode, struct file* filp)
     gcsHAL_PRIVATE_DATA_PTR	private;
 
     gcmkTRACE_ZONE(gcvLEVEL_VERBOSE, gcvZONE_DRIVER,
-		  "Entering drv_open\n");
+    	    	  "Entering drv_open\n");
 
     private = kmalloc(sizeof(gcsHAL_PRIVATE_DATA), GFP_KERNEL);
 
     if (private == gcvNULL)
     {
-	return -ENOTTY;
+    	return -ENOTTY;
     }
 
     private->device				= galDevice;
@@ -601,7 +532,7 @@ int drv_open(struct inode *inode, struct file* filp)
 
     if (!galDevice->contiguousMapped)
     {
-	gcmkVERIFY_OK(gckOS_MapMemory(galDevice->os,
+    	gcmkVERIFY_OK(gckOS_MapMemory(galDevice->os,
 									galDevice->contiguousPhysical,
 									galDevice->contiguousSize,
 									&private->contiguousLogical));
@@ -612,19 +543,13 @@ int drv_open(struct inode *inode, struct file* filp)
     return 0;
 }
 
-extern void
-OnProcessExit(
-	IN gckOS Os,
-	IN gckKERNEL Kernel
-	);
-
 int drv_release(struct inode* inode, struct file* filp)
 {
     gcsHAL_PRIVATE_DATA_PTR	private;
     gckGALDEVICE			device;
 
     gcmkTRACE_ZONE(gcvLEVEL_INFO, gcvZONE_DRIVER,
-		  "Entering drv_close\n");
+    	    	  "Entering drv_close\n");
 
     private = filp->private_data;
     gcmkASSERT(private != gcvNULL);
@@ -632,29 +557,37 @@ int drv_release(struct inode* inode, struct file* filp)
     device = private->device;
 
 #if gcdkUSE_MEMORY_RECORD
+    gcmkVERIFY_OK(gckCOMMAND_Stall(device->kernel->command));
+
 	FreeAllMemoryRecord(galDevice->os, &private->memoryRecordList);
 
-#ifdef ANDROID
-	gcmkVERIFY_OK(gckOS_Delay(galDevice->os, 1000));
-#else
-	gcmkVERIFY_OK(gckCOMMAND_Stall(device->kernel->command));
-#endif
+    gcmkVERIFY_OK(gckCOMMAND_Stall(device->kernel->command));
 #endif
 
-		if (private->contiguousLogical != gcvNULL)
-		{
-			gcmkVERIFY_OK(gckOS_UnmapMemory(galDevice->os,
-											galDevice->contiguousPhysical,
-											galDevice->contiguousSize,
-											private->contiguousLogical));
-		}
+	if (private->contiguousLogical != gcvNULL)
+	{
+		gcmkVERIFY_OK(gckOS_UnmapMemory(galDevice->os,
+										galDevice->contiguousPhysical,
+										galDevice->contiguousSize,
+										private->contiguousLogical));
+	}
+
+    /* Free some uncleared resource when unnormal exit */
+    gckOS_FreeProcessResource(galDevice->os, current->tgid);
+
+	/* Print GC memory usage after every process exits. */
+	gcmkPRINT("PID=%d , name=%s exits\n", current->tgid, current->comm);
+	gcmkPRINT("GC memory usage profile:\n");
+	gcmkPRINT("Total reserved video memory: %ld KB\n", galDevice->reservedMem/1024);
+	gcmkPRINT("Used video mem: %d KB\tcontiguous: %d KB\tvirtual: %d KB\n", galDevice->vidMemUsage/1024,
+							galDevice->contiguousMemUsage/1024, galDevice->virtualMemUsage/1024);
 
 	/* A process gets detached. */
 	gcmkVERIFY_OK(
 		gckKERNEL_AttachProcess(galDevice->kernel, gcvFALSE));
 
     kfree(private);
-    filp->private_data = NULL;
+    filp->private_data = gcvNULL;
 
     return 0;
 }
@@ -674,20 +607,21 @@ long drv_ioctl(struct file *filp,
 
     if (private == gcvNULL)
     {
-	gcmkTRACE_ZONE(gcvLEVEL_ERROR, gcvZONE_DRIVER,
-		      "[galcore] drv_ioctl: private_data is NULL\n");
+        gcmkLOG_WARNING_ARGS("private data is null");
+    	gcmkTRACE_ZONE(gcvLEVEL_ERROR, gcvZONE_DRIVER,
+    	    	      "[galcore] drv_ioctl: private_data is gcvNULL\n");
 
-	return -ENOTTY;
+    	return -ENOTTY;
     }
 
     device = private->device;
 
     if (device == gcvNULL)
     {
-	gcmkTRACE_ZONE(gcvLEVEL_ERROR, gcvZONE_DRIVER,
-		      "[galcore] drv_ioctl: device is NULL\n");
+    	gcmkTRACE_ZONE(gcvLEVEL_ERROR, gcvZONE_DRIVER,
+    	    	      "[galcore] drv_ioctl: device is gcvNULL\n");
 
-	return -ENOTTY;
+    	return -ENOTTY;
     }
 
     if (ioctlCode != IOCTL_GCHAL_INTERFACE
@@ -699,12 +633,12 @@ long drv_ioctl(struct file *filp,
 
     /* Get the drvArgs to begin with. */
     copyLen = copy_from_user(&drvArgs,
-			     (void *) arg,
+    	    	    	     (void *) arg,
 			     sizeof(DRIVER_ARGS));
 
     if (copyLen != 0)
     {
-	/* The input buffer is not big enough. So fail the I/O. */
+    	/* The input buffer is not big enough. So fail the I/O. */
         return -ENOTTY;
     }
 
@@ -713,12 +647,12 @@ long drv_ioctl(struct file *filp,
     ||  (drvArgs.OutputBufferSize != sizeof(gcsHAL_INTERFACE))
     )
     {
-        printk("\n [galcore] data structure size in kernel and user do not match !\n");
-	return -ENOTTY;
+        gcmkPRINT("\n [galcore] data structure size in kernel and user do not match !\n");
+    	return -ENOTTY;
     }
 
     copyLen = copy_from_user(&iface,
-			     drvArgs.InputBuffer,
+    	    	    	     drvArgs.InputBuffer,
 			     sizeof(gcsHAL_INTERFACE));
 
     if (copyLen != 0)
@@ -728,7 +662,7 @@ long drv_ioctl(struct file *filp,
     }
     if(galDevice->printPID)
     {
-        printk("--->pid=%d\tname=%s\tiface.command=%d.\n", current->pid, current->comm, iface.command);
+        gcmkPRINT("--->pid=%d\tname=%s\tiface.command=%d.\n", current->pid, current->comm, iface.command);
     }
 #if gcdkUSE_MEMORY_RECORD
 	if (iface.command == gcvHAL_EVENT_COMMIT)
@@ -759,7 +693,7 @@ long drv_ioctl(struct file *filp,
 				}
 				else
 				{
-					printk("*ERROR* Invalid video memory (0x%p) for free\n",
+					gcmkPRINT("*ERROR* Invalid video memory (0x%p) for free\n",
 						record->iface.u.FreeVideoMemory.node);
 				}
                 break;
@@ -781,47 +715,20 @@ long drv_ioctl(struct file *filp,
 	}
 #endif
 
-#if defined CONFIG_CPU_PXA910
-#if POWER_OFF_GC_WHEN_IDLE
-    gcmkVERIFY_OK(
-        gckOS_AcquireMutex(galDevice->os, galDevice->mutexGCDevice, gcvINFINITE));
-
-    if(galDevice->printPID) {
-        printk("|-|-|- Acquired gcdevice mutex...\t%s@%d\tCommand:%d\t0x%p\n",__FUNCTION__,__LINE__,iface.command,galDevice->mutexGCDevice);
-    }
-
-    if (/*galDevice->enableIdleOff &&*/ iface.command == gcvHAL_COMMIT && gcvPM_EARLY_SUSPEND == galDevice->currentPMode)
-    {
-        if (1) {
-            /* turn on gc when gc is power off and in early-suspend mode */
-            _wake_up_gc(galDevice);
-        }
-    }
-
-    gcmkVERIFY_OK(
-        gckOS_ReleaseMutex(galDevice->os, galDevice->mutexGCDevice));
-
-    if(galDevice->printPID) {
-        printk("|-|-|- Released gcdevice mutex...\t%s@%d\n",__FUNCTION__,__LINE__);
-    }
-
-#endif
-#endif
-
     status = gckKERNEL_Dispatch(device->kernel,
 		(ioctlCode == IOCTL_GCHAL_INTERFACE) , &iface);
 
     if (gcmIS_ERROR(status))
     {
-	gcmkTRACE_ZONE(gcvLEVEL_WARNING, gcvZONE_DRIVER,
-		      "[galcore] gckKERNEL_Dispatch returned %d.\n",
+    	gcmkTRACE_ZONE(gcvLEVEL_WARNING, gcvZONE_DRIVER,
+	    	      "[galcore] gckKERNEL_Dispatch returned %d.\n",
 		      status);
     }
 
     else if (gcmIS_ERROR(iface.status))
     {
-	gcmkTRACE_ZONE(gcvLEVEL_WARNING, gcvZONE_DRIVER,
-		      "[galcore] IOCTL %d returned %d.\n",
+    	gcmkTRACE_ZONE(gcvLEVEL_WARNING, gcvZONE_DRIVER,
+	    	      "[galcore] IOCTL %d returned %d.\n",
 		      iface.command,
 		      iface.status);
     }
@@ -829,18 +736,18 @@ long drv_ioctl(struct file *filp,
     /* See if this was a LOCK_VIDEO_MEMORY command. */
     else if (iface.command == gcvHAL_LOCK_VIDEO_MEMORY)
     {
-	/* Special case for mapped memory. */
-	if (private->mappedMemory != gcvNULL
+    	/* Special case for mapped memory. */
+    	if (private->mappedMemory != gcvNULL
 			&& iface.u.LockVideoMemory.node->VidMem.memory->object.type
 				== gcvOBJ_VIDMEM)
 		{
-			/* Compute offset into mapped memory. */
-		gctUINT32 offset = (gctUINT8 *) iface.u.LockVideoMemory.memory
-				- (gctUINT8 *) device->contiguousBase;
+	   		/* Compute offset into mapped memory. */
+	    	gctUINT32 offset = (gctUINT8 *) iface.u.LockVideoMemory.memory
+	    	    	     	- (gctUINT8 *) device->contiguousBase;
 
-	    /* Compute offset into user-mapped region. */
-	    iface.u.LockVideoMemory.memory =
-		(gctUINT8 *)  private->mappedMemory + offset;
+    	    /* Compute offset into user-mapped region. */
+    	    iface.u.LockVideoMemory.memory =
+	    	(gctUINT8 *)  private->mappedMemory + offset;
 		}
     }
 #if gcdkUSE_MEMORY_RECORD
@@ -870,19 +777,19 @@ long drv_ioctl(struct file *filp,
 		}
 		else
 		{
-			printk("*ERROR* Invalid video memory for free\n");
+			gcmkPRINT("*ERROR* Invalid video memory for free\n");
 		}
 	}
 #endif
 
     /* Copy data back to the user. */
     copyLen = copy_to_user(drvArgs.OutputBuffer,
-			   &iface,
+    	    	    	   &iface,
 			   sizeof(gcsHAL_INTERFACE));
 
     if (copyLen != 0)
     {
-	/* The output buffer is not big enough. So fail the I/O. */
+    	/* The output buffer is not big enough. So fail the I/O. */
         return -ENOTTY;
     }
     return 0;
@@ -897,7 +804,7 @@ static int drv_mmap(struct file * filp, struct vm_area_struct * vma)
 
     if (private == gcvNULL)
     {
-	return -ENOTTY;
+    	return -ENOTTY;
     }
 
     device = private->device;
@@ -917,22 +824,25 @@ static int drv_mmap(struct file * filp, struct vm_area_struct * vma)
 
     if (device->contiguousMapped)
     {
-	ret = io_remap_pfn_range(vma,
-				 vma->vm_start,
-				 (gctUINT32) device->contiguousPhysical >> PAGE_SHIFT,
+    	ret = io_remap_pfn_range(vma,
+	    	    	    	 vma->vm_start,
+    	    	    	    	 (gctUINT32) device->contiguousPhysical >> PAGE_SHIFT,
 				 size,
 				 vma->vm_page_prot);
 
-	private->mappedMemory = (ret == 0) ? (gctPOINTER) vma->vm_start : gcvNULL;
+    	private->mappedMemory = (ret == 0) ? (gctPOINTER) vma->vm_start : gcvNULL;
 
-	return ret;
+    	return ret;
     }
     else
     {
-	return -ENOTTY;
+    	return -ENOTTY;
     }
 }
 
+/******************************************************************************\
+* Driver initialization - cleanup and power management functions
+\******************************************************************************/
 
 #if !USE_PLATFORM_DRIVER
 static int __init drv_init(void)
@@ -944,10 +854,11 @@ static int drv_init(void)
     gckGALDEVICE device;
 
     gcmkTRACE_ZONE(gcvLEVEL_VERBOSE, gcvZONE_DRIVER,
-		  "Entering drv_init\n");
+    	    	  "Entering drv_init\n");
+	printk("\n[galcore] GC Version: %s\n", _GC_VERSION_STRING_);
 
 #if ENABLE_GPU_CLOCK_BY_DRIVER && LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,28)
-    gckOS_ClockOn(gpu_frequency);
+    gckOS_ClockOn(gcvNULL, gcvTRUE, gcvTRUE, gpu_frequency);
 #endif
 
 	if (showArgs)
@@ -966,7 +877,7 @@ static int drv_init(void)
 
     /* Create the GAL device. */
     gcmkVERIFY_OK(gckGALDEVICE_Construct(irqLine,
-					registerMemBase,
+    	    	    	    	    	registerMemBase,
 					registerMemSize,
 					contiguousBase,
 					contiguousSize,
@@ -976,112 +887,78 @@ static int drv_init(void)
 					baseAddress,
 					signal,
 					&device));
-    printk("\n[galcore] chipModel=0x%x,chipRevision=0x%x,chipFeatures=0x%x,chipMinorFeatures=0x%x\n",
+    gcmkPRINT("\n[galcore] chipModel=0x%x,chipRevision=0x%x,chipFeatures=0x%x,chipMinorFeatures=0x%x\n",
         device->kernel->hardware->chipModel, device->kernel->hardware->chipRevision,
         device->kernel->hardware->chipFeatures, device->kernel->hardware->chipMinorFeatures0);
 
-#ifdef CONFIG_PXA_DVFM
+#if MRVL_CONFIG_ENABLE_DVFM
     /* register galcore as a dvfm device*/
     if(dvfm_register("Galcore", &device->dvfm_dev_index))
     {
-        printk("\n[galcore] fail to do dvfm_register\n");
+        gcmkPRINT("\n[galcore] fail to do dvfm_register\n");
     }
-
-    if(dvfm_register_notifier(&galcore_notifier_block,
-				DVFM_FREQUENCY_NOTIFIER))
-    {
-        printk("\n[galcore] fail to do dvfm_register_notifier\n");
-    }
-
-    device->dvfm_notifier = &galcore_notifier_block;
-
-    device->needResetAfterD2 = gcvTRUE;
-    device->needD2DebugInfo = gcvFALSE;
-    device->enableMdelay = gcvFALSE;
-
-    device->enableD0CS = gcvTRUE;
-    device->enableD1 = gcvTRUE;
-    device->enableD2 = gcvTRUE;
-    device->enableCG = gcvTRUE;
-
-    gckOS_SetConstraint(device->os, gcvTRUE, gcvTRUE);
 #endif
-
-    device->printPID = gcvFALSE;
-    device->reset = gcvTRUE;
-
-#if defined CONFIG_CPU_PXA910
-#if POWER_OFF_GC_WHEN_IDLE
-    device->currentPMode = gcvPM_NORMAL;
-#endif
-#endif
-
-    device->enableLowPowerMode = gcvFALSE;
-    device->enableDVFM = gcvTRUE;
-
-    memset(device->profNode, 0, 100*sizeof(struct _gckProfNode));
-    device->lastNodeIndex = 0;
+	gckOS_SetConstraint(device->os, gcvTRUE, gcvTRUE);
 
     /* Start the GAL device. */
     if (gcmIS_ERROR(gckGALDEVICE_Start(device)))
     {
-	gcmkTRACE_ZONE(gcvLEVEL_ERROR, gcvZONE_DRIVER,
-		      "[galcore] Can't start the gal device.\n");
+    	gcmkTRACE_ZONE(gcvLEVEL_ERROR, gcvZONE_DRIVER,
+    	    	      "[galcore] Can't start the gal device.\n");
 
-	/* Roll back. */
-	gckGALDEVICE_Stop(device);
-	gckGALDEVICE_Destroy(device);
+    	/* Roll back. */
+    	gckGALDEVICE_Stop(device);
+    	gckGALDEVICE_Destroy(device);
 
-	return -1;
+    	return -1;
     }
 
     /* Register the character device. */
     ret = register_chrdev(major, DRV_NAME, &driver_fops);
     if (ret < 0)
     {
-	gcmkTRACE_ZONE(gcvLEVEL_ERROR, gcvZONE_DRIVER,
-		      "[galcore] Could not allocate major number for mmap.\n");
+    	gcmkTRACE_ZONE(gcvLEVEL_ERROR, gcvZONE_DRIVER,
+    	    	      "[galcore] Could not allocate major number for mmap.\n");
 
-	/* Roll back. */
-	gckGALDEVICE_Stop(device);
-	gckGALDEVICE_Destroy(device);
+    	/* Roll back. */
+    	gckGALDEVICE_Stop(device);
+    	gckGALDEVICE_Destroy(device);
 
-	return -1;
+    	return -1;
     }
     else
     {
-	if (major == 0)
-	{
-	    major = ret;
-	}
+    	if (major == 0)
+    	{
+    	    major = ret;
+    	}
     }
 
     galDevice = device;
 
 	gpuClass = class_create(THIS_MODULE, "v_graphics_class");
 	if (IS_ERR(gpuClass)) {
-	gcmkTRACE_ZONE(gcvLEVEL_ERROR, gcvZONE_DRIVER,
+    	gcmkTRACE_ZONE(gcvLEVEL_ERROR, gcvZONE_DRIVER,
 					  "Failed to create the class.\n");
 		return -1;
 	}
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27)
-	device_create(gpuClass, NULL, MKDEV(major, 0), NULL, "galcore");
+	device_create(gpuClass, gcvNULL, MKDEV(major, 0), gcvNULL, "galcore");
 #else
-	device_create(gpuClass, NULL, MKDEV(major, 0), "galcore");
+	device_create(gpuClass, gcvNULL, MKDEV(major, 0), "galcore");
 #endif
 
     gcmkTRACE_ZONE(gcvLEVEL_INFO, gcvZONE_DRIVER,
-		  "[galcore] irqLine->%ld, contiguousSize->%lu, memBase->0x%lX\n",
+    	    	  "[galcore] irqLine->%ld, contiguousSize->%lu, memBase->0x%lX\n",
 		  irqLine,
 		  contiguousSize,
 		  registerMemBase);
 
     gcmkTRACE_ZONE(gcvLEVEL_VERBOSE, gcvZONE_DRIVER,
-		  "[galcore] driver registered successfully.\n");
+    	    	  "[galcore] driver registered successfully.\n");
 
-    /* device should be idle because it is just initialized */
-    gckOS_NotifyIdle(device->os, gcvTRUE);
+    BSP_IDLE_PROFILE_INIT;
     return 0;
 }
 
@@ -1092,7 +969,7 @@ static void drv_exit(void)
 #endif
 {
     gcmkTRACE_ZONE(gcvLEVEL_VERBOSE, gcvZONE_DRIVER,
-		  "[galcore] Entering drv_exit\n");
+    	    	  "[galcore] Entering drv_exit\n");
 
 	device_destroy(gpuClass, MKDEV(major, 0));
 	class_destroy(gpuClass);
@@ -1100,220 +977,99 @@ static void drv_exit(void)
     unregister_chrdev(major, DRV_NAME);
 
     gckGALDEVICE_Stop(galDevice);
-#ifdef CONFIG_PXA_DVFM
+
     gckOS_UnSetConstraint(galDevice->os, gcvTRUE, gcvTRUE);
 
-    if(dvfm_unregister_notifier(&galcore_notifier_block,
-				DVFM_FREQUENCY_NOTIFIER))
-    {
-        printk("\n[galcore] fail to do dvfm_unregister_notifier\n");
-    }
-
+#if MRVL_CONFIG_ENABLE_DVFM
     if(dvfm_unregister("Galcore", &galDevice->dvfm_dev_index))
     {
-        printk("\n[galcore] fail to do dvfm_unregister\n");
+        gcmkPRINT("\n[galcore] fail to do dvfm_unregister\n");
     }
 #endif
+
     gckGALDEVICE_Destroy(galDevice);
 
 #if ENABLE_GPU_CLOCK_BY_DRIVER && LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,28)
-    gckOS_ClockOff();
+    gckOS_ClockOff(gcvNULL, gcvTRUE, gcvTRUE);
 #endif
 }
 
 #if !USE_PLATFORM_DRIVER
 module_init(drv_init);
 module_exit(drv_exit);
-#else
+#else /* USE_PLATFORM_DRIVER -- start */
 
 #define DEVICE_NAME "galcore"
 
-static int _gpu_off(gckGALDEVICE device)
-{
-	gceSTATUS status;
-
-    printk(">>>>>>[%s]@%d\n",__func__, __LINE__);
-
-#ifdef CONFIG_PXA_DVFM
-    device->needResetAfterD2 = gcvFALSE;
-#endif
-    if(device->kernel->hardware->chipPowerState != gcvPOWER_OFF)
-    {
-        status = gckHARDWARE_SetPowerManagementState(device->kernel->hardware, gcvPOWER_OFF);
-	if (gcmIS_ERROR(status))
-	{
-		return -1;
-	}
-
-        gckOS_SuspendInterrupt(device->os);
-        gckOS_ClockOff();
-    }
-
-    gckOS_UnSetConstraint(device->os, gcvTRUE, gcvTRUE);
-    printk("<<<<<<[%s]@%d\n",__func__, __LINE__);
-	return 0;
-}
-
-static int _gpu_on(gckGALDEVICE device)
-{
-	gceSTATUS status;
-
-    printk(">>>>>>[%s]@%d\n",__func__, __LINE__);
-
-    gckOS_SetConstraint(device->os, gcvTRUE, gcvTRUE);
-
-    if(device->kernel->hardware->chipPowerState != gcvPOWER_ON)
-    {
-        gckOS_ClockOn(0);
-        gckOS_ResumeInterrupt(device->os);
-
-        status = gckHARDWARE_SetPowerManagementState(device->kernel->hardware, gcvPOWER_ON);
-	if (gcmIS_ERROR(status))
-	{
-		return -1;
-	}
-    }
-
-#ifdef CONFIG_PXA_DVFM
-    device->needResetAfterD2 = gcvTRUE;
-#endif
-
-    printk("<<<<<<[%s]@%d\n",__func__, __LINE__);
-	return 0;
-}
-
-#ifdef ANDROID
+#if MRVL_CONFIG_ENABLE_EARLYSUSPEND
 static void gpu_early_suspend(struct early_suspend *h)
 {
-#if defined CONFIG_CPU_PXA910
-    gceSTATUS   status;
-#endif
-//    printk(">>>>>>>[%s]@%d\n",__func__,__LINE__);
-#if defined CONFIG_PXA_DVFM || defined CONFIG_CPU_MMP2
+    gcmkPRINT("\n");
+    gcmkPRINT("[galcore]: %s, %d\n",__func__, __LINE__);
+
     if(galDevice->printPID)
     {
     }
     else
     {
-        _gpu_off(galDevice);
-    }
-#elif defined CONFIG_CPU_PXA910
-#if POWER_OFF_GC_WHEN_IDLE
-    {
-        static gctINT count = 0;
-        ++count;
-        printk(">>>[%s]\t@%d\tN:0x%x\n", __func__, __LINE__, count);
-
-        /* Acquire the mutex. */
-        gcmkONERROR(
-            gckOS_AcquireMutex(galDevice->os, galDevice->mutexGCDevice, gcvINFINITE));
-
-        if (galDevice->printPID) {
-            printk("|-|-|- Acquired gcdevice mutex...\t%s@%d\n",__func__,__LINE__);
-        }
-
-        _power_off_gc(galDevice, gcvTRUE);
-        galDevice->currentPMode = gcvPM_EARLY_SUSPEND;
-
-        /* Release the mutex. */
-        gcmkVERIFY_OK(
-            gckOS_ReleaseMutex(galDevice->os, galDevice->mutexGCDevice));
-
-        if (galDevice->printPID) {
-            printk("|-|-|- Released gcdevice mutex...\t%s@%d\n",__func__,__LINE__);
-        }
-
-        printk("<<<[%s]\t@%d\tN:0x%x\n", __func__, __LINE__, count);
-
-        // useless
-        if(0) _gpu_off(galDevice);
-    }
+#if MRVL_PLATFORM_MMP2
+        if (!cpu_is_mmp2_z0() && !cpu_is_mmp2_z1())
 #endif
-#endif
-//    printk("<<<<<<<[%s]@%d\n",__func__,__LINE__);
+            gckHARDWARE_SetPowerManagementState(galDevice->kernel->hardware, gcvPOWER_OFF);
+        BSP_IDLE_PROFILE_CALC_IDLE_TIME;
+    }
+
+    galDevice->currentPMode = gcvPM_EARLY_SUSPEND;
+
+    gcmkPRINT("[galcore]: %s, %d\n\n",__func__, __LINE__);
+    gcmkPRINT("\n");
+
     return;
-
-#if defined CONFIG_CPU_PXA910
-OnError:
-    /* Return the status. */
-    printk("---->ERROR:%s @ %d\n", __func__, __LINE__);
-#endif
 }
+
 static void gpu_late_resume(struct early_suspend *h)
 {
-#if defined CONFIG_CPU_PXA910
-#if POWER_OFF_GC_WHEN_IDLE
-    gceSTATUS   status;
-    static gctINT count = 0;
-#endif
-#endif
-//    printk(">>>>>>>[%s]@%d\n",__func__,__LINE__);
+    gcmkPRINT("\n");
+    gcmkPRINT("[galcore]: %s, %d\n",__func__, __LINE__);
 
-#if defined CONFIG_PXA_DVFM || defined CONFIG_CPU_MMP2
+    galDevice->currentPMode = gcvPM_NORMAL;
+
     if(galDevice->printPID)
     {
     }
     else
     {
-	    _gpu_on(galDevice);
+        /* NO need to add the time during early-suspend to idle-time */
+        BSP_IDLE_PROFILE_INIT;
     }
 
-#elif defined CONFIG_CPU_PXA910
-#if POWER_OFF_GC_WHEN_IDLE
-    ++count;
-    printk("#@@##@@##@@@#\n");
-    printk(">>>[%s]\t@%d\tN:0x%x\n", __func__, __LINE__, count);
-
-    gcmkONERROR(
-        gckOS_AcquireMutex(galDevice->os, galDevice->mutexGCDevice, gcvINFINITE));
-
-    if(galDevice->printPID) {
-        printk("|-|-|- Acquired gcdevice mutex...\t%s@%d\t0x%p\n",__func__,__LINE__,galDevice->mutexGCDevice);
-    }
-
-    galDevice->currentPMode = gcvPM_LATE_RESUME;
-    _power_on_gc(galDevice);
-    galDevice->currentPMode = gcvPM_NORMAL;
-    gcmkVERIFY_OK(
-        gckOS_ReleaseMutex(galDevice->os, galDevice->mutexGCDevice));
-
-    if(galDevice->printPID) {
-        printk("|-|-|- Released gcdevice mutex...\t%s@%d\n",__func__,__LINE__);
-    }
-    printk("<<<[%s]\t@%d\tN:0x%x\n", __func__, __LINE__, count);
-
-    if (0) _gpu_on(galDevice);
-#endif
-
-#endif
+    gcmkPRINT("[galcore]: %s, %d\n\n",__func__, __LINE__);
+    gcmkPRINT("\n");
 
     return;
-#if defined CONFIG_CPU_PXA910
-OnError:
-    /* Return the status. */
-    printk("---->ERROR:%s @ %d\n", __func__, __LINE__);
-#endif
 }
+
 static struct early_suspend gpu_early_suspend_desc = {
     .level = EARLY_SUSPEND_LEVEL_STOP_DRAWING + 200,  /*  make sure GC early_suspend after surfaceflinger stop drawing */
 	.suspend = gpu_early_suspend,
 	.resume = gpu_late_resume,
 };
-#endif
+#endif /* MRVL_CONFIG_ENABLE_EARLYSUSPEND -- end */
+
 static int __devinit gpu_probe(struct platform_device *pdev)
 {
 	int ret = -ENODEV;
 	struct resource *res;
 	res = platform_get_resource_byname(pdev, IORESOURCE_IRQ,"gpu_irq");
 	if (!res) {
-		printk(KERN_ERR "%s: No irq line supplied.\n",__FUNCTION__);
+		gcmkPRINT(KERN_ERR "%s: No irq line supplied.\n",__FUNCTION__);
 		goto gpu_probe_fail;
 	}
 	irqLine = res->start;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,"gpu_base");
 	if (!res) {
-		printk(KERN_ERR "%s: No register base supplied.\n",__FUNCTION__);
+		gcmkPRINT(KERN_ERR "%s: No register base supplied.\n",__FUNCTION__);
 		goto gpu_probe_fail;
 	}
 	registerMemBase = res->start;
@@ -1321,7 +1077,7 @@ static int __devinit gpu_probe(struct platform_device *pdev)
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,"gpu_mem");
 	if (!res) {
-		printk(KERN_ERR "%s: No memory base supplied.\n",__FUNCTION__);
+		gcmkPRINT(KERN_ERR "%s: No memory base supplied.\n",__FUNCTION__);
 		goto gpu_probe_fail;
 	}
 	contiguousBase  = res->start;
@@ -1334,14 +1090,14 @@ static int __devinit gpu_probe(struct platform_device *pdev)
     create_gc_proc_file();
 #endif
 
-#ifdef ANDROID
+#if MRVL_CONFIG_ENABLE_EARLYSUSPEND
     register_early_suspend(&gpu_early_suspend_desc);
 #endif
 		return ret;
 	}
 
 gpu_probe_fail:
-	printk(KERN_INFO "Failed to register gpu driver.\n");
+	gcmkPRINT(KERN_INFO "Failed to register gpu driver.\n");
 	return ret;
 }
 
@@ -1353,7 +1109,7 @@ static int __devinit gpu_remove(struct platform_device *pdev)
     remove_gc_proc_file();
 #endif
 
-#ifdef ANDROID
+#if MRVL_CONFIG_ENABLE_EARLYSUSPEND
     unregister_early_suspend(&gpu_early_suspend_desc);
 #endif
 	return 0;
@@ -1361,25 +1117,47 @@ static int __devinit gpu_remove(struct platform_device *pdev)
 
 static int __devinit gpu_suspend(struct platform_device *dev, pm_message_t state)
 {
+    gceSTATUS status;
+    gctUINT32 countRetry = 0;
 
-    printk("[galcore]: %s, %d\n",__func__, __LINE__);
+    gcmkPRINT("\n");
+    gcmkPRINT("[galcore]: %s, %d\n",__func__, __LINE__);
 
-#if (defined CONFIG_PXA_DVFM) || (defined CONFIG_CPU_PXA910)
+    while((status = gckHARDWARE_SetPowerManagementState(galDevice->kernel->hardware, gcvPOWER_OFF)) != gcvSTATUS_OK)
+    {
+        countRetry++;
+        if(countRetry > 3)
+        {
+            countRetry = 0;
+            gcmkPRINT("%s, GC is not correctly powered off, abort..\n",__func__);
+            break;
+        }
+    }
+
+    galDevice->currentPMode = gcvPM_SUSPEND;
+
+    gcmkPRINT("[galcore]: %s, %d\n",__func__, __LINE__);
+    gcmkPRINT("\n");
+
     return 0;
-#endif
-
-    return _gpu_off(galDevice);
 }
 
 static int __devinit gpu_resume(struct platform_device *dev)
 {
-    printk("[galcore]: %s, %d\n",__func__, __LINE__);
+    gcmkPRINT("\n");
+    gcmkPRINT("[galcore]: %s, %d",__func__, __LINE__);
 
-#if (defined CONFIG_PXA_DVFM) || (defined CONFIG_CPU_PXA910)
-	return 0;
+
+#if MRVL_CONFIG_ENABLE_EARLYSUSPEND
+    galDevice->currentPMode = gcvPM_EARLY_SUSPEND;
+#else
+    galDevice->currentPMode = gcvPM_NORMAL;
 #endif
 
-    return _gpu_on(galDevice);
+    gcmkPRINT("[galcore]: %s, %d\n",__func__, __LINE__);
+    gcmkPRINT("\n");
+
+    return 0;
 }
 
 static struct platform_driver gpu_driver = {
@@ -1430,7 +1208,7 @@ static int __init gpu_init(void)
 	gpu_device = platform_device_alloc(DEVICE_NAME, -1);
 	if (!gpu_device)
 	{
-		printk(KERN_ERR "galcore: platform_device_alloc failed.\n");
+		gcmkPRINT(KERN_ERR "galcore: platform_device_alloc failed.\n");
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -1439,7 +1217,7 @@ static int __init gpu_init(void)
 	ret = platform_device_add_resources(gpu_device, gpu_resources, 3);
 	if (ret)
 	{
-		printk(KERN_ERR "galcore: platform_device_add_resources failed.\n");
+		gcmkPRINT(KERN_ERR "galcore: platform_device_add_resources failed.\n");
 		goto put_dev;
 	}
 
@@ -1447,7 +1225,7 @@ static int __init gpu_init(void)
 	ret = platform_device_add(gpu_device);
 	if (ret)
 	{
-		printk(KERN_ERR "galcore: platform_device_add failed.\n");
+		gcmkPRINT(KERN_ERR "galcore: platform_device_add failed.\n");
 		goto del_dev;
 	}
 #endif
@@ -1481,279 +1259,4 @@ static void __exit gpu_exit(void)
 module_init(gpu_init);
 module_exit(gpu_exit);
 
-#endif
-
-#ifdef CONFIG_PXA_DVFM
-#define TRACE   if(galDevice->needD2DebugInfo) \
-                { \
-                    printk("%s,%d\n",__func__,__LINE__); \
-                }
-
-static void gc_off(void)
-{
-    if(galDevice->kernel->hardware->chipPowerState != gcvPOWER_OFF)
-    {
-        gceSTATUS  status;
-	gckCOMMAND command;
-	 /* gctPOINTER buffer; */
-	 /* gctSIZE_T  bytes, requested; */
-
-        command = galDevice->kernel->command;
-         /* galDevice->kernel->notifyIdle = gcvFALSE; */
-
-         /*  stall */
-	{
-            /* Acquire the context switching mutex so nothing else can be
-		** committed. */
-		gcmkONERROR(
-			gckOS_AcquireMutex(galDevice->kernel->hardware->os,
-							   command->mutexContext,
-							   gcvINFINITE));
-
-             /* mdelay(20); */
-	}
-	 /*  stop */
-	{
-
-		/* Stop the command parser. */
-		gcmkONERROR(
-			gckCOMMAND_Stop(command));
-
-		/* Grab the command queue mutex so nothing can get access to the
-		** command queue. */
-		gcmkONERROR(
-			gckOS_AcquireMutex(galDevice->kernel->hardware->os,
-							   command->mutexQueue,
-							   gcvINFINITE));
-	}
-
-        {
-            gckOS_SuspendInterrupt(galDevice->os);
-            gckOS_ClockOff();
-        }
-
-        galDevice->kernel->hardware->chipPowerState = gcvPOWER_OFF;
-
-    }
-    return;
-
-OnError:
-	printk("ERROR: %s has error \n",__func__);
-}
-
-static void gc_on(void)
-{
-    gctUINT32 idle = 0;
-
-    if(galDevice->kernel->hardware->chipPowerState != gcvPOWER_ON)
-    {
-        gceSTATUS  status;
-
-        gckOS_ClockOn(0);
-        gckOS_ResumeInterrupt(galDevice->os);
-
-         /*  INITIALIZE */
-	{
-		/* Initialize hardware. */
-		gcmkONERROR(
-			gckHARDWARE_InitializeHardware(galDevice->kernel->hardware));
-
-		gcmkONERROR(
-			gckHARDWARE_SetFastClear(galDevice->kernel->hardware,
-									 galDevice->kernel->hardware->allowFastClear,
-									 galDevice->kernel->hardware->allowCompression));
-
-		/* Force the command queue to reload the next context. */
-		galDevice->kernel->command->currentContext = 0;
-	}
-
-	/* Sleep for 1ms, to make sure everything is powered on. */
-	mdelay(1); /* gcmkVERIFY_OK(gcoOS_Delay(galDevice->os, 1)); */
-
-	 /*  start */
-	{
-            /* Release the command mutex queue. */
-		gcmkONERROR(
-			gckOS_ReleaseMutex(galDevice->kernel->hardware->os,
-							   galDevice->kernel->command->mutexQueue));
-		/* Start the command processor. */
-		gcmkONERROR(
-			gckCOMMAND_Start(galDevice->kernel->command));
-	}
-	 /*  RELEASE_CONTEXT */
-	{
-		/* Release the context switching mutex. */
-		gcmkVERIFY_OK(
-			gckOS_ReleaseMutex(galDevice->kernel->hardware->os,
-							   galDevice->kernel->command->mutexContext));
-	}
-
-        galDevice->kernel->hardware->chipPowerState = gcvPOWER_ON;
-         /* galDevice->kernel->notifyIdle = gcvTRUE; */
-
-        /* Read idle register. */
-        gcmkVERIFY_OK(gckHARDWARE_GetIdle(galDevice->kernel->hardware, gcvFALSE, &idle));
-
-#if MRVL_LOW_POWER_MODE_DEBUG
-        {
-            int strlen = 0;
-            strlen = sprintf(galDevice->kernel->kernelMSG + galDevice->kernel->msgLen,
-					"after reset, idle register:0x%08X\n",idle);
-            galDevice->kernel->msgLen += strlen;
-        }
-#endif
-        if(galDevice->needD2DebugInfo)
-            printk("after reset, idle register:0x%08X\n",idle);
-    }
-    else
-    {
-#if MRVL_LOW_POWER_MODE_DEBUG
-        {
-            int strlen = 0;
-            strlen = sprintf(galDevice->kernel->kernelMSG + galDevice->kernel->msgLen,
-					"no reset, idle register:0x%08X\n",idle);
-            galDevice->kernel->msgLen += strlen;
-        }
-#endif
-        if(galDevice->needD2DebugInfo)
-            printk("no reset, idle register:0x%08X\n",idle);
-    }
-    return;
-
-OnError:
-	printk("ERROR: %s has error \n",__func__);
-}
-
-static int galcore_dvfm_notifier(struct notifier_block *nb,
-				unsigned long val, void *data)
-{
-    struct dvfm_freqs *freqs = (struct dvfm_freqs *)data;
-	struct op_info *new = NULL;
-    struct op_info *old = NULL;
-	struct dvfm_md_opt *md_old;
-    struct dvfm_md_opt *md_new;
-    int newMode, oldMode;
-
-    static int count = 0;
-    static int countD0CS = 0;
-
-	if (freqs)
-	{
-		new = &freqs->new_info;
-        old = &freqs->old_info;
-	}
-	else
-		return 0;
-
-	md_old = (struct dvfm_md_opt *)old->op;
-    md_new = (struct dvfm_md_opt *)new->op;
-    oldMode = md_old->power_mode;
-    newMode = md_new->power_mode;
-
-    if(galDevice->needResetAfterD2)
-    {
-        /*
-        Any run mode -> D0CS
-        Pre:    Turn off GC clock
-        Post:   Do nothing
-
-        D0CS -> any run mode
-        Pre:    Do nothing
-        Post:   Turn on GC clock and restore state
-
-        D0CS mode -> D1/D2/CG
-        Pre:    Do nothing
-        Post:   Do nothing
-
-        Any run mode (except D0CS) -> D1/D2/CG
-        Pre:    Turn off GC clock
-        Post:   Turn on GC clock and restore state
-        */
-
-        if((oldMode == POWER_MODE_D0) && (newMode == POWER_MODE_D0CS))
-        { /*  Any run mode -> D0CS */
-            if(val == DVFM_FREQ_PRECHANGE)
-            {
-                gc_off();
-            }
-            else if(val == DVFM_FREQ_POSTCHANGE)
-            {
-            }
-        }
-        else if((oldMode == POWER_MODE_D0CS) && (newMode == POWER_MODE_D0))
-        { /*  D0CS -> any run mode */
-            if(val == DVFM_FREQ_PRECHANGE)
-            {
-            }
-            else if(val == DVFM_FREQ_POSTCHANGE)
-            {
-                gc_on();
-                countD0CS++;
-            }
-        }
-        else if((oldMode == POWER_MODE_D0CS)
-            && ((newMode == POWER_MODE_D1)
-                || (newMode == POWER_MODE_D2)
-                || (newMode == POWER_MODE_CG)))
-        { /*  D0CS mode -> D1/D2/CG */
-            if(val == DVFM_FREQ_PRECHANGE)
-            {
-            }
-            else if(val == DVFM_FREQ_POSTCHANGE)
-            {
-            }
-        }
-        else if((oldMode == POWER_MODE_D0)
-            && ((newMode == POWER_MODE_D1)
-                || (newMode == POWER_MODE_D2)
-                || (newMode == POWER_MODE_CG)))
-        { /*  Any run mode (except D0CS) -> D1/D2/CG */
-            if(val == DVFM_FREQ_PRECHANGE)
-            {
-                galDevice->enableMdelay = gcvTRUE;
-                gc_off();
-            }
-            else if(val == DVFM_FREQ_POSTCHANGE)
-            {
-                gc_on();
-                count++;
-                galDevice->enableMdelay = gcvFALSE;
-            }
-        }
-
-        if((oldMode != newMode)&&(val == DVFM_FREQ_POSTCHANGE))
-        {
-#if MRVL_LOW_POWER_MODE_DEBUG
-            {
-                int strlen = 0;
-                strlen = sprintf(galDevice->kernel->kernelMSG + galDevice->kernel->msgLen,
-						"count:%d,countD0CS:%d,power mode %d->%d\n",count,countD0CS,oldMode,newMode);
-                galDevice->kernel->msgLen += strlen;
-            }
-#endif
-            if(galDevice->needD2DebugInfo)
-                printk("[%s@%d]count:%d,countD0CS:%d,power mode %d->%d\n",__func__,__LINE__,count,countD0CS,oldMode,newMode);
-        }
-
-    }
-    else
-    {
-        if((oldMode != newMode)&&(val == DVFM_FREQ_POSTCHANGE))
-        {
-#if 0 /* AXI bus may be off at this point. Remove gckHARDWARE_GetIdle in case of this case */
-            gctUINT32 idle;
-
-            /* Read idle register. */
-		gcmkVERIFY_OK(gckHARDWARE_GetIdle(galDevice->kernel->hardware, gcvFALSE, &idle));
-
-            if(galDevice->needD2DebugInfo)
-                printk("[%s@%d]count:%d,countD0CS:%d,power mode %d->%d\n",__func__, __LINE__,count,countD0CS,oldMode,newMode);
-#endif
-        }
-    }
-	return 0;
-
-}
-
-#endif
-
+#endif /* USE_PLATFORM_DRIVER -- end */

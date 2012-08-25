@@ -10,7 +10,7 @@
 *    This program is distributed in the hope that it will be useful,
 *    but WITHOUT ANY WARRANTY; without even the implied warranty of
 *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public Lisence for more details.
+*    GNU General Public License for more details.
 *
 *    You should have received a copy of the GNU General Public License
 *    along with this program; if not write to the Free Software
@@ -64,8 +64,8 @@ _GetEvent(
 
 	/* Grab the queue mutex. */
 	gcmkONERROR(gckOS_AcquireMutex(Event->os,
-							   Event->mutexQueue,
-						   gcvINFINITE));
+	        	   				   Event->mutexQueue,
+    				    		   gcvINFINITE));
 	acquired = gcvTRUE;
 
 	/* Walk through all events. */
@@ -111,7 +111,63 @@ OnError:
 	gcmkFOOTER();
 	return status;
 }
+#if VIVANTE_POWER_MANAGE
+static gceSTATUS
+_IsEmpty(
+    IN gckEVENT Event,
+    OUT gctBOOL_PTR IsEmpty
+    )
+{
+    gceSTATUS status;
+    gctSIZE_T i;
 
+    gcmkHEADER_ARG("Event=0x%x", Event);
+
+    /* Verify the arguments. */
+    gcmkVERIFY_OBJECT(Event, gcvOBJ_EVENT);
+    gcmkVERIFY_ARGUMENT(IsEmpty != gcvNULL);
+
+    /* Assume the event queue is empty. */
+    *IsEmpty = gcvTRUE;
+
+    /* Walk the event queue. */
+    for (i = 0; i < gcmCOUNTOF(Event->queues); ++i)
+    {
+        /* Check whether this event is in use. */
+        if (Event->queues[i].head != gcvNULL)
+        {
+            /* The event is in use, hence the queue is not empty. */
+            *IsEmpty = gcvFALSE;
+            break;
+        }
+    }
+
+    /* Try acquiring the mutex. */
+    status = gckOS_AcquireMutex(Event->os, Event->mutexQueue, 0);
+    if (status == gcvSTATUS_TIMEOUT)
+    {
+        /* Timeout - queue is no longer empty. */
+        *IsEmpty = gcvFALSE;
+    }
+    else
+    {
+        /* Bail out on error. */
+        gcmkONERROR(status);
+
+        /* Release the mutex. */
+        gcmkVERIFY_OK(gckOS_ReleaseMutex(Event->os, Event->mutexQueue));
+    }
+
+    /* Success. */
+    gcmkFOOTER_ARG("*IsEmpty=%d", gcmOPT_VALUE(IsEmpty));
+    return gcvSTATUS_OK;
+
+OnError:
+    /* Return the status. */
+    gcmkFOOTER();
+    return status;
+}
+#endif
 /******************************************************************************\
 ******************************* gckEVENT API Code *******************************
 \******************************************************************************/
@@ -173,6 +229,11 @@ gckEVENT_Construct(
 	event->listMutex   = gcvNULL;
 	event->lastID      = 0;
 
+    /* Construct atom holding number of event counts. */
+    event->atomEventRef= gcvNULL;
+    gcmkONERROR(
+        gckOS_AtomConstruct(os, &event->atomEventRef));
+    
 	/* Create the mutexes. */
 	gcmkONERROR(
 		gckOS_CreateMutex(os, &event->mutexQueue));
@@ -216,22 +277,32 @@ gckEVENT_Construct(
 	return gcvSTATUS_OK;
 
 OnError:
+    gcmkLOG_ERROR_STATUS();
 	/* Roll back. */
 	if (event != gcvNULL)
 	{
+        if (event->atomEventRef != gcvNULL)
+        {
+            gcmkVERIFY_OK(gckOS_AtomDestroy(os, event->atomEventRef));
+            event->atomEventRef = gcvNULL;
+        }
+
 		if (event->mutexQueue != gcvNULL)
 		{
 			gcmkVERIFY_OK(gckOS_DeleteMutex(os, event->mutexQueue));
+            event->mutexQueue = gcvNULL;
 		}
 
 		if (event->freeMutex != gcvNULL)
 		{
 			gcmkVERIFY_OK(gckOS_DeleteMutex(os, event->freeMutex));
+            event->freeMutex = gcvNULL;
 		}
 
 		if (event->listMutex != gcvNULL)
 		{
 			gcmkVERIFY_OK(gckOS_DeleteMutex(os, event->listMutex));
+            event->listMutex = gcvNULL;
 		}
 
 		while (event->freeList != gcvNULL)
@@ -241,8 +312,10 @@ OnError:
 
 			gcmkVERIFY_OK(gckOS_Free(os, record));
 		}
-
+        event->freeList = gcvNULL;
+        
 		gcmkVERIFY_OK(gckOS_Free(os, event));
+        event = gcvNULL;
 	}
 
 	/* Return the status. */
@@ -277,8 +350,19 @@ gckEVENT_Destroy(
 	/* Verify the arguments. */
 	gcmkVERIFY_OBJECT(Event, gcvOBJ_EVENT);
 
+    /* Detsroy the event counts atom. */
+    if (Event->atomEventRef != gcvNULL)
+    {
+        gcmkVERIFY_OK(gckOS_AtomDestroy(Event->os, Event->atomEventRef));
+        Event->atomEventRef = gcvNULL;
+    }
+
     /* Delete the queue mutex. */
-    gcmkVERIFY_OK(gckOS_DeleteMutex(Event->os, Event->mutexQueue));
+	if (Event->mutexQueue != gcvNULL)
+	{
+		gcmkVERIFY_OK(gckOS_DeleteMutex(Event->os, Event->mutexQueue));
+        Event->mutexQueue = gcvNULL;
+	}
 
 	/* Free all free events. */
 	while (Event->freeList != gcvNULL)
@@ -289,8 +373,15 @@ gckEVENT_Destroy(
 		gcmkVERIFY_OK(gckOS_Free(Event->os, record));
 	}
 
+    Event->freeList = gcvNULL;
+    
+
 	/* Delete the free mutex. */
-	gcmkVERIFY_OK(gckOS_DeleteMutex(Event->os, Event->freeMutex));
+    if(Event->freeMutex != gcvNULL)
+    {
+        gcmkVERIFY_OK(gckOS_DeleteMutex(Event->os, Event->freeMutex));
+        Event->freeMutex = gcvNULL;
+    }
 
 	/* Free all pending events. */
 	while (Event->list.head != gcvNULL)
@@ -304,14 +395,22 @@ gckEVENT_Destroy(
 		gcmkVERIFY_OK(gckOS_Free(Event->os, record));
 	}
 
-	/* Delete the list mutex. */
-	gcmkVERIFY_OK(gckOS_DeleteMutex(Event->os, Event->listMutex));
+    Event->list.head =  gcvNULL;
 
+	/* Delete the list mutex. */
+    if(Event->listMutex != gcvNULL)
+	{
+	    gcmkVERIFY_OK(gckOS_DeleteMutex(Event->os, Event->listMutex));
+        Event->listMutex = gcvNULL;
+    }
+    
 	/* Mark the gckEVENT object as unknown. */
 	Event->object.type = gcvOBJ_UNKNOWN;
 
 	/* Free the gckEVENT object. */
 	gcmkVERIFY_OK(gckOS_Free(Event->os, Event));
+
+    Event = gcvNULL;
 
 	/* Success. */
 	gcmkFOOTER_NO();
@@ -348,6 +447,8 @@ gckEVENT_AllocateRecord(
 
 			if (gcmIS_ERROR(status))
 			{
+                gcmkLOG_WARNING_ARGS("status=%d, i=%d, Out of memory allocating event records",
+                                        status, i);
 				gcmkTRACE_ZONE(gcvLEVEL_WARNING, gcvZONE_EVENT,
 							   "Out of memory allocating event records.");
 				break;
@@ -366,6 +467,7 @@ gckEVENT_AllocateRecord(
 
 			/* Release the mutex. */
 			gcmkONERROR(gckOS_ReleaseMutex(Event->os, Event->freeMutex));
+            acquired = gcvFALSE;
 		}
 	}
 
@@ -379,12 +481,14 @@ gckEVENT_AllocateRecord(
 
 	/* Release the mutex. */
 	gcmkONERROR(gckOS_ReleaseMutex(Event->os, Event->freeMutex));
+	acquired = gcvFALSE;
 
 	/* Success. */
 	gcmkFOOTER_ARG("*Record=0x%x", gcmOPT_POINTER(Record));
 	return gcvSTATUS_OK;
 
 OnError:
+    gcmkLOG_ERROR_ARGS("status=%d, acquired=%d", status, acquired);
 	/* Roll back. */
 	if (acquired)
 	{
@@ -428,6 +532,7 @@ gckEVENT_FreeRecord(
 	return gcvSTATUS_OK;
 
 OnError:
+    gcmkLOG_ERROR_ARGS("status=%d, acquired=%d", status, acquired);
 	/* Roll back. */
 	if (acquired)
 	{
@@ -443,16 +548,15 @@ static gceSTATUS
 gckEVENT_AddList(
 	IN gckEVENT Event,
 	IN gcsHAL_INTERFACE_PTR Interface,
-	IN gceKERNEL_WHERE FromWhere,
-	IN gctBOOL Locking
+    IN gceKERNEL_WHERE FromWhere
 	)
 {
 	gceSTATUS status;
 	gctBOOL acquired = gcvFALSE;
 	gcsEVENT_PTR record = gcvNULL;
 
-	gcmkHEADER_ARG("Event=0x%x Interface=0x%x FromWhere=%d Locking=%d",
-                   Event, Interface, FromWhere, Locking);
+    gcmkHEADER_ARG("Event=0x%x Interface=0x%x FromWhere=%d",
+                   Event, Interface, FromWhere);
 
 	/* Verify the arguments. */
 	gcmkVERIFY_OBJECT(Event, gcvOBJ_EVENT);
@@ -468,7 +572,7 @@ gckEVENT_AddList(
 		)
 		{
 			/* No match - auto-submit the list. */
-			status = gckEVENT_Submit(Event, gcvFALSE, Locking);
+            status = gckEVENT_Submit(Event, gcvFALSE);
 
 			if (status == gcvSTATUS_OUT_OF_RESOURCES)
 			{
@@ -540,6 +644,7 @@ gckEVENT_AddList(
 	return gcvSTATUS_OK;
 
 OnError:
+    gcmkLOG_ERROR_ARGS("status=%d, acquired=%d, record=0x%08x", status, acquired, record);
 	/* Roll back. */
 	if (acquired)
 	{
@@ -608,13 +713,14 @@ gckEVENT_FreeNonPagedMemory(
 	iface.u.FreeNonPagedMemory.logical  = Logical;
 
 	/* Append it to the queue. */
-	gcmkONERROR(gckEVENT_AddList(Event, &iface, FromWhere, gcvFALSE));
+    gcmkONERROR(gckEVENT_AddList(Event, &iface, FromWhere));
 
 	/* Success. */
 	gcmkFOOTER_NO();
 	return gcvSTATUS_OK;
 
 OnError:
+    gcmkLOG_ERROR_STATUS();
 	/* Return the status. */
 	gcmkFOOTER();
 	return status;
@@ -672,13 +778,14 @@ gckEVENT_FreeContiguousMemory(
 	iface.u.FreeContiguousMemory.logical  = Logical;
 
 	/* Append it to the queue. */
-	gcmkONERROR(gckEVENT_AddList(Event, &iface, FromWhere, gcvFALSE));
+    gcmkONERROR(gckEVENT_AddList(Event, &iface, FromWhere));
 
 	/* Success. */
 	gcmkFOOTER_NO();
 	return gcvSTATUS_OK;
 
 OnError:
+    gcmkLOG_ERROR_STATUS();
 	/* Return the status. */
 	gcmkFOOTER();
 	return status;
@@ -723,13 +830,14 @@ gckEVENT_FreeVideoMemory(
 	iface.u.FreeVideoMemory.node = VideoMemory;
 
 	/* Append it to the queue. */
-	gcmkONERROR(gckEVENT_AddList(Event, &iface, FromWhere, gcvFALSE));
+    gcmkONERROR(gckEVENT_AddList(Event, &iface, FromWhere));
 
 	/* Success. */
 	gcmkFOOTER_NO();
 	return gcvSTATUS_OK;
 
 OnError:
+    gcmkLOG_ERROR_STATUS();
 	/* Return the status. */
 	gcmkFOOTER();
 	return status;
@@ -751,20 +859,20 @@ OnError:
 **
 **      gceKERNEL_WHERE FromWhere
 **          Place in the pipe where the event needs to be generated.
+**
 */
 gceSTATUS
 gckEVENT_Signal(
 	IN gckEVENT Event,
 	IN gctSIGNAL Signal,
-	IN gceKERNEL_WHERE FromWhere,
-	IN gctBOOL Locking
+    IN gceKERNEL_WHERE FromWhere
 	)
 {
 	gceSTATUS status;
 	gcsHAL_INTERFACE iface;
 
-	gcmkHEADER_ARG("Event=0x%x Signal=0x%x FromWhere=%d Locking=%d",
-                   Event, Signal, FromWhere, Locking);
+    gcmkHEADER_ARG("Event=0x%x Signal=0x%x FromWhere=%d",
+                   Event, Signal, FromWhere);
 
 	/* Verify the arguments. */
 	gcmkVERIFY_OBJECT(Event, gcvOBJ_EVENT);
@@ -782,13 +890,14 @@ gckEVENT_Signal(
 #endif
 
 	/* Append it to the queue. */
-	gcmkONERROR(gckEVENT_AddList(Event, &iface, FromWhere, Locking));
+    gcmkONERROR(gckEVENT_AddList(Event, &iface, FromWhere));
 
 	/* Success. */
 	gcmkFOOTER_NO();
 	return gcvSTATUS_OK;
 
 OnError:
+    gcmkLOG_ERROR_STATUS();
 	/* Return the status. */
 	gcmkFOOTER();
 	return status;
@@ -840,19 +949,19 @@ gckEVENT_Unlock(
 	iface.u.UnlockVideoMemory.asynchroneous = 0;
 
 	/* Append it to the queue. */
-	gcmkONERROR(gckEVENT_AddList(Event, &iface, FromWhere, gcvFALSE));
+    gcmkONERROR(gckEVENT_AddList(Event, &iface, FromWhere));
 
 	/* Success. */
 	gcmkFOOTER_NO();
 	return gcvSTATUS_OK;
 
 OnError:
+    gcmkLOG_ERROR_STATUS();
 	/* Return the status. */
 	gcmkFOOTER();
 	return status;
 }
 
-#define ENABLE_GC_IDLE_EVENT 1
 gceSTATUS
 gckEVENT_Commit(
 	IN gckEVENT Event,
@@ -866,13 +975,14 @@ gckEVENT_Commit(
 
 	/* Verify the arguments. */
 	gcmkVERIFY_OBJECT(Event, gcvOBJ_EVENT);
-
+    
     if(Queue == gcvNULL)
     {
-#if ENABLE_GC_IDLE_EVENT
-	/* Try to set idle */
-	gcmkVERIFY_OK(gckEVENT_TryToSetIdle(Event));
-    return gcvSTATUS_OK;
+#if !VIVANTE_POWER_MANAGE
+    	/* Try to set idle */
+    	gcmkVERIFY_OK(gckEVENT_TryToSetIdle(Event));
+    	gcmkFOOTER_NO();
+        return gcvSTATUS_OK;
 #endif
     }
 
@@ -886,7 +996,7 @@ gckEVENT_Commit(
 										 (gctPOINTER *) &record));
 
 		/* Append event record to event queue. */
-		gcmkONERROR(gckEVENT_AddList(Event, &record->iface, gcvKERNEL_PIXEL, gcvFALSE));
+        gcmkONERROR(gckEVENT_AddList(Event, &record->iface, gcvKERNEL_PIXEL));
 
 		/* Next record in the queue. */
 		next = record->next;
@@ -903,13 +1013,14 @@ gckEVENT_Commit(
 	}
 
 	/* Submit the event list. */
-	gcmkONERROR(gckEVENT_Submit(Event, gcvTRUE, gcvFALSE));
+    gcmkONERROR(gckEVENT_Submit(Event, gcvTRUE));
 
 	/* Success */
 	gcmkFOOTER_NO();
 	return gcvSTATUS_OK;
 
 OnError:
+    gcmkLOG_ERROR_ARGS("status=%d, record=0x%08x, Queue=0x%08x", status, record, Queue);
 	/* Roll back. */
 	if (record == gcvNULL)
 	{
@@ -951,15 +1062,18 @@ gckEVENT_Notify(
 {
 	gceSTATUS status = gcvSTATUS_OK;
 	gctINT i;
-	gcsEVENT_QUEUE * queue;
+	gcsEVENT_QUEUE * queue = gcvNULL;
 	gctUINT mask = 0;
 	gctBOOL acquired = gcvFALSE;
+    gctBOOL cmdAcquired = gcvFALSE;
 #ifdef __QNXNTO__
 	gcuVIDMEM_NODE_PTR node;
 #endif
     gctUINT pending;
     gctBOOL suspended = gcvFALSE;
-
+#if VIVANTE_POWER_MANAGE
+    gctBOOL empty = gcvFALSE, idle = gcvFALSE;
+#endif
 	gcmkHEADER_ARG("Event=0x%x", Event);
 
 	/* Verify the arguments. */
@@ -1022,8 +1136,9 @@ gckEVENT_Notify(
 
 		if (queue == gcvNULL)
 		{
+            gcmkLOG_WARNING_ARGS("Queue is null,interrupts 0x%08x are not pending", pending);
 			gcmkTRACE_ZONE(gcvLEVEL_ERROR, gcvZONE_EVENT,
-						   "Interrupts 0x08x are not pending.", pending);
+						   "Interrupts 0x%08x are not pending.", pending);
 
 			break;
 		}
@@ -1036,6 +1151,8 @@ gckEVENT_Notify(
 			&&  (Event->queues[i].source == queue->source)
 			)
 			{
+                gcmkLOG_WARNING_ARGS("Event %d lost (stamp %llu)",
+                                    i, Event->queues[i].stamp);
 				gcmkTRACE(gcvLEVEL_ERROR,
 						  "Event %d lost (stamp %llu)",
 						  i, Event->queues[i].stamp);
@@ -1056,6 +1173,8 @@ gckEVENT_Notify(
 
 			event       = queue->head;
 
+            gcmkTRACE_ZONE(gcvLEVEL_VERBOSE, gcvZONE_EVENT,
+                "event->event.command: %d", event->event.command);
 			/* Dispatch on event type. */
 			switch (event->event.command)
 			{
@@ -1069,7 +1188,7 @@ gckEVENT_Notify(
 				break;
 
 			case gcvHAL_FREE_CONTIGUOUS_MEMORY:
-				/* Unmap the user memory. */
+                /* Unmap the user memory. */
 				status = gckOS_FreeContiguous(
 							Event->os,
 							event->event.u.FreeContiguousMemory.physical,
@@ -1103,7 +1222,7 @@ gckEVENT_Notify(
 				gcmkERR_BREAK(
 					gckOS_MapPhysical(Event->os,
 									  event->event.u.WriteData.address,
-									  gcmPTR2INT(event->event.u.WriteData.kernelAddress),
+	  								  gcmPTR2INT(event->event.u.WriteData.kernelAddress),
 									  gcmSIZEOF(gctUINT32),
 									  &logical));
 
@@ -1116,7 +1235,7 @@ gckEVENT_Notify(
 				/* Unmap the physical memory. */
 				gcmkERR_BREAK(
 					gckOS_UnmapPhysical(Event->os,
-									logical,
+    									logical,
 										gcmSIZEOF(gctUINT32)));
 #else
 				/* Write data. */
@@ -1189,26 +1308,32 @@ gckEVENT_Notify(
 										  event->event.u.UnmapUserMemory.address);
 				break;
 
-		case gcvHAL_SET_IDLE:
+    		case gcvHAL_SET_IDLE:
 				if(!IsReset)
 				{
-				/* Grab the conmmand queue mutex. */
-				gcmkVERIFY_OK(gckOS_AcquireMutex(Event->os,
-												Event->kernel->command->mutexQueue,
-												gcvINFINITE));
-
-				/* Set idle if no new commitments */
-				if (Event->lastCommitStamp == Event->kernel->command->commitStamp)
-				{
+        			/* Grab the mutex. */
+        			gcmkONERROR(gckOS_AcquireRecMutex(Event->os,
+        											Event->kernel->hardware->recMutexPower,
+        											gcvINFINITE));
+                    cmdAcquired = gcvTRUE;
+                    
+                    gcmkTRACE_ZONE(gcvLEVEL_VERBOSE, gcvZONE_EVENT,
+                        "lastCommitStamp=%llu  commitStamp=%llu",
+                        Event->lastCommitStamp, Event->kernel->command->commitStamp);
+                    
+        			/* Set idle if no new commitments */
+        			if (Event->lastCommitStamp == Event->kernel->command->commitStamp)
+        			{
                         if(Event->kernel->command->idle == gcvFALSE)
                         {
-					Event->kernel->command->idle = gcvTRUE;
-					gcmkVERIFY_OK(gckOS_NotifyIdle(Event->os, gcvTRUE));
+            				Event->kernel->command->idle = gcvTRUE;
+            				gcmkVERIFY_OK(gckOS_NotifyIdle(Event->os, gcvTRUE));
                         }
-				}
+        			}
 
-				/* Release the command queue mutex. */
-				gcmkVERIFY_OK(gckOS_ReleaseMutex(Event->os, Event->kernel->command->mutexQueue));
+        			/* Release the mutex. */
+        			gcmkVERIFY_OK(gckOS_ReleaseRecMutex(Event->os, Event->kernel->hardware->recMutexPower));
+                    cmdAcquired = gcvFALSE;
 				}
                 break;
 
@@ -1252,19 +1377,58 @@ gckEVENT_Notify(
         suspended = gcvFALSE;
 	}
 
-#if ENABLE_GC_IDLE_EVENT
     if(!IsReset)
     {
-	/* Try to set idle */
-	gcmkVERIFY_OK(gckEVENT_TryToSetIdle(Event));
-    }
+#if VIVANTE_POWER_MANAGE
+		/* Grab the mutex. */
+		gcmkONERROR(gckOS_AcquireRecMutex(Event->os,
+										Event->kernel->hardware->recMutexPower,
+										gcvINFINITE));
+        cmdAcquired = gcvTRUE;
+        
+        /* Check whether the event queue is empty. */
+        gcmkONERROR(_IsEmpty(Event, &empty));
+
+        if (empty)
+        {
+            /* Query whether the hardware is idle. */
+            gcmkONERROR(gckHARDWARE_QueryIdle(Event->kernel->hardware, &idle));
+
+            if (idle)
+            {
+                if(Event->kernel->command->idle == gcvFALSE)
+                {
+    				Event->kernel->command->idle = gcvTRUE;
+    				gcmkVERIFY_OK(gckOS_NotifyIdle(Event->os, gcvTRUE));
+                }
+            }
+        }
+        
+    	/* Release the mutex. */
+		gcmkVERIFY_OK(gckOS_ReleaseRecMutex(Event->os, Event->kernel->hardware->recMutexPower));
+        cmdAcquired = gcvFALSE;
+#else
+        {
+        	/* Try to set idle */
+        	gcmkVERIFY_OK(gckEVENT_TryToSetIdle(Event));
+        }
 #endif
+    }
+
+    {
+        gctINT32 old = 0;
+        /* Increment the number of event counts. */
+        gcmkONERROR(
+            gckOS_AtomIncrement(Event->kernel->os, Event->atomEventRef, &old));
+    }
 
 	/* Success. */
 	gcmkFOOTER_NO();
 	return gcvSTATUS_OK;
 
 OnError:
+    gcmkLOG_ERROR_ARGS("status=%d, acquired=%d, suspended=%d, queue=0x%08x",
+                        status, acquired, suspended, queue);
 	if (acquired)
 	{
 		/* Release mutex. */
@@ -1277,6 +1441,12 @@ OnError:
         gcmkVERIFY_OK(gckOS_ResumeInterrupt(Event->os));
     }
 
+    if (cmdAcquired)
+    {
+        /* Release the command queue mutex. */
+		gcmkVERIFY_OK(gckOS_ReleaseRecMutex(Event->os, Event->kernel->hardware->recMutexPower));
+    }
+
 	/* Return the status. */
 	gcmkFOOTER();
 	return status;
@@ -1285,18 +1455,20 @@ OnError:
 gceSTATUS
 gckEVENT_Submit(
 	IN gckEVENT Event,
-	IN gctBOOL Wait,
-	IN gctBOOL Locking
+    IN gctBOOL Wait
 	)
 {
 	gctUINT8 id = 0xFF;
 	gctSIZE_T bytes;
 	gctPOINTER buffer;
 	gceSTATUS status;
-	gctBOOL acquired = gcvTRUE;
+    gctBOOL acquired = gcvFALSE;
 	gctBOOL reserved = gcvFALSE;
+#if gcdGPU_TIMEOUT
+    gctUINT32 timer = 0;
+#endif
 
-	gcmkHEADER_ARG("Event=0x%x Wait=%d Locking=%d", Event, Wait, Locking);
+    gcmkHEADER_ARG("Event=0x%x Wait=%d", Event, Wait);
 
 	/* Only process if we have events queued. */
 	if (Event->list.head != gcvNULL)
@@ -1304,26 +1476,37 @@ gckEVENT_Submit(
 	    for (;;)
 	    {
 		    /* Allocate an event ID. */
-		status = _GetEvent(Event, &id, Event->list.source);
+    		status = _GetEvent(Event, &id, Event->list.source);
 
-		if (gcmIS_ERROR(status))
-		{
+    		if (gcmIS_ERROR(status))
+    		{
 				/* Out of resources? */
                 if (Wait && (status == gcvSTATUS_OUT_OF_RESOURCES))
                 {
 					/* Delay a while. */
                     gcmkONERROR(gckOS_Delay(Event->os, 1));
+
+#if gcdGPU_TIMEOUT && VIVANTE_POWER_MANAGE
+                    if (++timer >= gcdGPU_TIMEOUT)
+                    {
+                        gcmkONERROR(gckOS_Broadcast(Event->os,
+                                                    Event->kernel->hardware,
+                                                    gcvBROADCAST_GPU_STUCK));
+
+                        gcmkONERROR(gcvSTATUS_GPU_NOT_RESPONDING);
+                }
+#endif
                 }
                 else
                 {
                     gcmkONERROR(status);
                 }
-		}
-		else
-		{
+    		}
+    		else
+    		{
 				/* Got en event ID. */
-			break;
-		}
+        		break;
+    		}
         }
 
 		gcmkTRACE_ZONE(gcvLEVEL_INFO, gcvZONE_EVENT, "Using id=%d", id);
@@ -1337,6 +1520,9 @@ gckEVENT_Submit(
 		/* Copy event list to event ID queue. */
 		Event->queues[id].source = Event->list.source;
 		Event->queues[id].head   = Event->list.head;
+
+        /* Get process ID. */
+        gcmkONERROR(gckOS_GetProcessID(&Event->queues[id].processID));
 
 		/* Mark event list as empty. */
 		Event->list.head = gcvNULL;
@@ -1361,7 +1547,6 @@ gckEVENT_Submit(
 		/* Reserve space in the command queue. */
 		gcmkONERROR(gckCOMMAND_Reserve(Event->kernel->command,
 									   bytes,
-									   Locking,
 									   &buffer,
 									   &bytes));
 		reserved = gcvTRUE;
@@ -1374,7 +1559,7 @@ gckEVENT_Submit(
 									  &bytes));
 
 		/* Execute the hardware event. */
-		gcmkONERROR(gckCOMMAND_Execute(Event->kernel->command, bytes, Locking));
+        gcmkONERROR(gckCOMMAND_Execute(Event->kernel->command, bytes));
 		reserved = gcvFALSE;
 #endif
 	}
@@ -1384,13 +1569,15 @@ gckEVENT_Submit(
 	return gcvSTATUS_OK;
 
 OnError:
+    gcmkLOG_ERROR_ARGS("status=%d, acquired=%d, reserved=%d, eventId=%d",
+                        status, acquired, reserved, id);
 	if (acquired)
 	{
 		/* Need to unroll the mutex acquire. */
 		gcmkVERIFY_OK(gckOS_ReleaseMutex(Event->os, Event->listMutex));
 	}
 
-	if (!Locking && reserved)
+    if (reserved)
 	{
 		/* Need to release the command buffer. */
 		gcmkVERIFY_OK(gckCOMMAND_Release(Event->kernel->command));
@@ -1451,36 +1638,44 @@ gckEVENT_SetIdle(
 
 	/* Verify the arguments. */
 	gcmkVERIFY_OBJECT(Event, gcvOBJ_EVENT);
+	gcmkHEADER_ARG("Event=0x%x CommandBuffer=0x%x CommandSize=0x%x FromWhere=%d Wait=%d",
+                    Event, CommandBuffer, CommandSize, FromWhere, Wait);
 
 	/* Create an event. */
 	iface.command = gcvHAL_SET_IDLE;
 
 	/* Append it to the queue. */
-	gcmkONERROR(gckEVENT_AddList(Event, &iface, FromWhere, gcvFALSE));
+	gcmkONERROR(gckEVENT_AddList(Event, &iface, FromWhere));
 
 	/* Success. */
 	gcmkFOOTER_NO();
 	return gcvSTATUS_OK;
 
 OnError:
+    gcmkLOG_ERROR_STATUS();
 	/* Return the status. */
 	gcmkFOOTER();
 	return status;
 }
 
-
+#define ENABLE_COMMITSTAMP_CHECK    0
 gceSTATUS
 gckEVENT_TryToSetIdle(
 	IN gckEVENT Event
 	)
 {
-	gctINT i;
+	gctINT i = -1;
 	gctBOOL setIdle;
 
 	/* Verify the arguments. */
 	gcmkVERIFY_OBJECT(Event, gcvOBJ_EVENT);
+	gcmkHEADER_ARG("Event=0x%x", Event);
 
-	if (!Event->kernel->notifyIdle) return gcvSTATUS_OK;
+	if (!Event->kernel->notifyIdle)
+    {
+        gcmkFOOTER_NO();
+        return gcvSTATUS_OK;
+    }
 
 	/* Initialize the flag */
 	setIdle = gcvFALSE;
@@ -1493,7 +1688,13 @@ gckEVENT_TryToSetIdle(
 	/* Suspend interrupt */
 	gcmkVERIFY_OK(gckOS_SuspendInterrupt(Event->os));
 
+    /*
+        FIXME: this check may cause system enter into idle status every 120 seconds in home screen scenario on TD,
+               Temp solution -- disable this.
+    */
+#if ENABLE_COMMITSTAMP_CHECK
 	if (Event->lastCommitStamp != Event->kernel->command->commitStamp)
+#endif
 	{
 		setIdle = gcvTRUE;
 
@@ -1507,7 +1708,7 @@ gckEVENT_TryToSetIdle(
 			}
 		}
 	}
-
+    
 	/* Resume interrupt */
 	gcmkVERIFY_OK(gckOS_ResumeInterrupt(Event->os));
 
@@ -1517,6 +1718,11 @@ gckEVENT_TryToSetIdle(
 	/* Issue an event to set idle if necessary */
 	if (setIdle)
 	{
+        /* Grab the conmmand queue mutex. */
+        gcmkVERIFY_OK(
+        	gckOS_AcquireMutex(Event->kernel->command->os,
+    						   Event->kernel->command->mutexQueue,
+    						   gcvINFINITE)); 
 
 		/* Append the EVENT command to write data into the boolean. */
 		gcmkVERIFY_OK(gckEVENT_SetIdle(Event,
@@ -1524,22 +1730,17 @@ gckEVENT_TryToSetIdle(
 									0,
 									gcvKERNEL_PIXEL,
 									gcvTRUE));
-
-        /* Grab the conmmand queue mutex. */
-        gcmkVERIFY_OK(
-		gckOS_AcquireMutex(Event->kernel->command->os,
-						   Event->kernel->command->mutexQueue,
-						   gcvINFINITE));
-
+        
 		Event->lastCommitStamp = Event->kernel->command->commitStamp + 1;
-
+        
         /* Release the command queue mutex. */
         gcmkVERIFY_OK(
-		gckOS_ReleaseMutex(Event->kernel->command->os, Event->kernel->command->mutexQueue));
-
+        	gckOS_ReleaseMutex(Event->kernel->command->os, Event->kernel->command->mutexQueue));
+        
 	}
 
 	/* Success. */
+	gcmkFOOTER_ARG("i=%d setIdle=%d", i, setIdle);
 	return gcvSTATUS_OK;
 }
 

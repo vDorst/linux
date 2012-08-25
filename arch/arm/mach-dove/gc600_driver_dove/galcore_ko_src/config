@@ -22,3 +22,6 @@
 ARCH_TYPE	?= arm
 SDK_DIR		?= $(AQROOT)/build/sdk
 USE_3D_VG	= 1
+USE_PROFILER ?= 0
+USE_MRVL_PROFILER ?= 0
+    

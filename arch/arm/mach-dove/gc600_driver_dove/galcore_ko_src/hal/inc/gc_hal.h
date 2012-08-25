@@ -10,7 +10,7 @@
 *    This program is distributed in the hope that it will be useful,
 *    but WITHOUT ANY WARRANTY; without even the implied warranty of
 *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public Lisence for more details.
+*    GNU General Public License for more details.
 *
 *    You should have received a copy of the GNU General Public License
 *    along with this program; if not write to the Free Software
@@ -33,9 +33,39 @@
 extern "C" {
 #endif
 
+/* the number of profiling nodes */
+#define NUM_PROFILE_NODES           100
+
+/* temporarily place gralloc defination here, should be moved to android header file later */
+#define GRALLOC_USAGE_GLES20_RENDER      0x10000000
+
+/* BSP idle profile Macros */
+#if ENABLE_BSP_IDLE_PROFILE
+/*
+dev_id:     1 vpu  0 gpu
+State:      1 run   0 idle
+Start:      2 init  1 start  0 stop
+*/
+#define BSP_IDLE_PROFILE(dev_id,state,start) \
+do { \
+    if(1) \
+        gcmkPRINT("--->%s\t\tstart_profile(0,%d,%d)\t%s\n", \
+        __FUNCTION__,state,start,(start==1)?(state?"busy-time":"\tidle-time"):"init"); \
+    start_profile(dev_id,state,start); \
+} while(0);
+#define BSP_IDLE_PROFILE_INIT                 BSP_IDLE_PROFILE(0, 0, 2)
+#define BSP_IDLE_PROFILE_CALC_BUSY_TIME       BSP_IDLE_PROFILE(0, 1, 1)
+#define BSP_IDLE_PROFILE_CALC_IDLE_TIME       BSP_IDLE_PROFILE(0, 0, 1)
+#else /* Disable bsp_idle_profile or OTHER PLATFORMs */
+#define BSP_IDLE_PROFILE_INIT
+#define BSP_IDLE_PROFILE_CALC_BUSY_TIME
+#define BSP_IDLE_PROFILE_CALC_IDLE_TIME
+#endif
+
 /******************************************************************************\
 ******************************* Alignment Macros *******************************
 \******************************************************************************/
+#define GC_NOP_COMMAND      0x18000000
 
 #define gcmALIGN(n, align) \
 ( \
@@ -74,6 +104,7 @@ typedef enum _gceOBJECT_TYPE
 	gcvOBJ_COMMAND				= gcmCC('C','M','D',' '),
 	gcvOBJ_COMMANDBUFFER		= gcmCC('C','M','D','B'),
 	gcvOBJ_CONTEXT				= gcmCC('C','T','X','T'),
+	gcvOBJ_CONTEXTBUFFER		= gcmCC('C','T','X','B'),
 	gcvOBJ_DEVICE				= gcmCC('D','E','V',' '),
 	gcvOBJ_DUMP					= gcmCC('D','U','M','P'),
 	gcvOBJ_EVENT				= gcmCC('E','V','N','T'),
@@ -119,6 +150,8 @@ typedef struct _gcsKERNEL_SETTINGS
 	gctINT signal;
 }
 gcsKERNEL_SETTINGS;
+
+typedef struct _gckHARDWARE *       gckHARDWARE;
 
 /*******************************************************************************
 **
@@ -174,6 +207,26 @@ gcsKERNEL_SETTINGS;
 
 typedef struct _gckOS			* gckOS;
 
+/*!
+*********************************************************************
+*   \struct _gckRecursiveMutex
+*   \brief
+*       Data structure for recursive lock.
+*********************************************************************
+*/
+typedef struct _gckRecursiveMutex *	gckRecursiveMutex;
+struct _gckRecursiveMutex
+{
+	/* Thread lock the mutex. */
+    gctINT32					pThread;
+	/* Lock times. */
+    gctUINT32                   nReference;
+	/* Access mutex. */
+	gctPOINTER					accMutex;
+	/* Underly mutex. */
+	gctPOINTER					undMutex;
+};
+
 /* Construct a new gckOS object. */
 gceSTATUS
 gckOS_Construct(
@@ -198,6 +251,10 @@ gckOS_QueryVideoMemory(
 	OUT gctPHYS_ADDR * ContiguousAddress,
 	OUT gctSIZE_T * ContiguousSize
 	);
+
+/*Simulate allocate memory random fail */
+gctBOOL 
+gckOS_ForceMemAllocFail(gckOS Os);
 
 /* Allocate memory from the heap. */
 gceSTATUS
@@ -349,7 +406,7 @@ gceSTATUS
 gckOS_MapPhysical(
 	IN gckOS Os,
 	IN gctUINT32 Physical,
-	IN gctUINT32 OriginalLogical,
+	IN gctUINT32 OriginalLogical,	
 	IN gctSIZE_T Bytes,
 	OUT gctPOINTER * Logical
 	);
@@ -365,6 +422,14 @@ gckOS_UnmapPhysical(
 /* Read data from a hardware register. */
 gceSTATUS
 gckOS_ReadRegister(
+	IN gckOS Os,
+	IN gctUINT32 Address,
+	OUT gctUINT32 * Data
+	);
+
+/* Read data from a register directly without mutex protection. */
+gceSTATUS 
+gckOS_DirectReadRegister(
 	IN gckOS Os,
 	IN gctUINT32 Address,
 	OUT gctUINT32 * Data
@@ -433,6 +498,35 @@ gckOS_ReleaseMutex(
 	IN gctPOINTER Mutex
 	);
 
+/* Create a new recursive mutex. */
+gceSTATUS
+gckOS_CreateRecMutex(
+	IN gckOS Os,
+	OUT gckRecursiveMutex *Mutex
+	);
+
+/* Delete a recursive mutex. */
+gceSTATUS
+gckOS_DeleteRecMutex(
+	IN gckOS Os,
+	IN gckRecursiveMutex Mutex
+	);
+
+/* Acquire a recursive mutex. */
+gceSTATUS
+gckOS_AcquireRecMutex(
+	IN gckOS Os,
+	IN gckRecursiveMutex Mutex,
+	IN gctUINT32 Timeout
+	);
+
+/* Release a recursive mutex. */
+gceSTATUS
+gckOS_ReleaseRecMutex(
+	IN gckOS Os,
+	IN gckRecursiveMutex Mutex
+	);
+
 /* Atomically exchange a pair of 32-bit values. */
 gceSTATUS
 gckOS_AtomicExchange(
@@ -451,9 +545,147 @@ gckOS_AtomicExchangePtr(
     OUT gctPOINTER * OldValue
 	);
 
+/* Update video memory usage. */
+gceSTATUS
+gckOS_UpdateVidMemUsage(
+	IN gckOS Os,
+    IN gctBOOL IsAllocated,
+	IN gctSIZE_T Bytes
+	);
+
+/*******************************************************************************
+**
+**  gckOS_AtomConstruct
+**
+**  Create an atom.
+**
+**  INPUT:
+**
+**      gckOS Os
+**          Pointer to a gckOS object.
+**
+**  OUTPUT:
+**
+**      gctPOINTER * Atom
+**          Pointer to a variable receiving the constructed atom.
+*/
+gceSTATUS
+gckOS_AtomConstruct(
+    IN gckOS Os,
+    OUT gctPOINTER * Atom
+    );
+
+/*******************************************************************************
+**
+**  gckOS_AtomDestroy
+**
+**  Destroy an atom.
+**
+**  INPUT:
+**
+**      gckOS Os
+**          Pointer to a gckOS object.
+**
+**      gctPOINTER Atom
+**          Pointer to the atom to destroy.
+**
+**  OUTPUT:
+**
+**      Nothing.
+*/
+gceSTATUS
+gckOS_AtomDestroy(
+    IN gckOS Os,
+    OUT gctPOINTER Atom
+    );
+
+/*******************************************************************************
+**
+**  gckOS_AtomGet
+**
+**  Get the 32-bit value protected by an atom.
+**
+**  INPUT:
+**
+**      gckOS Os
+**          Pointer to a gckOS object.
+**
+**      gctPOINTER Atom
+**          Pointer to the atom.
+**
+**  OUTPUT:
+**
+**      gctINT32_PTR Value
+**          Pointer to a variable the receives the value of the atom.
+*/
+gceSTATUS
+gckOS_AtomGet(
+    IN gckOS Os,
+    IN gctPOINTER Atom,
+    OUT gctINT32_PTR Value
+    );
+
+/*******************************************************************************
+**
+**  gckOS_AtomIncrement
+**
+**  Atomically increment the 32-bit integer value inside an atom.
+**
+**  INPUT:
+**
+**      gckOS Os
+**          Pointer to a gckOS object.
+**
+**      gctPOINTER Atom
+**          Pointer to the atom.
+**
+**  OUTPUT:
+**
+**      gctINT32_PTR Value
+**          Pointer to a variable the receives the original value of the atom.
+*/
+gceSTATUS
+gckOS_AtomIncrement(
+    IN gckOS Os,
+    IN gctPOINTER Atom,
+    OUT gctINT32_PTR Value
+    );
+
+/*******************************************************************************
+**
+**  gckOS_AtomDecrement
+**
+**  Atomically decrement the 32-bit integer value inside an atom.
+**
+**  INPUT:
+**
+**      gckOS Os
+**          Pointer to a gckOS object.
+**
+**      gctPOINTER Atom
+**          Pointer to the atom.
+**
+**  OUTPUT:
+**
+**      gctINT32_PTR Value
+**          Pointer to a variable the receives the original value of the atom.
+*/
+gceSTATUS
+gckOS_AtomDecrement(
+    IN gckOS Os,
+    IN gctPOINTER Atom,
+    OUT gctINT32_PTR Value
+    );
+
 /* Delay a number of microseconds. */
 gceSTATUS
 gckOS_Delay(
+	IN gckOS Os,
+	IN gctUINT32 Delay
+	);
+
+/* Delay a number of microseconds. */
+gceSTATUS gckOS_Udelay(
 	IN gckOS Os,
 	IN gctUINT32 Delay
 	);
@@ -485,18 +717,39 @@ gckOS_UnmapUserPointer(
 
 gceSTATUS
 gckOS_ClockOff(
-    void
+    IN gckOS Os,
+    IN gctBOOL disableClk,
+    IN gctBOOL disablePwr
 	);
 
 gceSTATUS
 gckOS_ClockOn(
+    IN gckOS Os,
+    IN gctBOOL enableClk,
+    IN gctBOOL enablePwr,
 	IN gctUINT64 Frequency
+	);
+	
+gceSTATUS
+gckOS_PowerOff(
+	IN gckOS Os
+	);
+
+gceSTATUS
+gckOS_PowerOn(
+	IN gckOS Os
+	);
+
+gceSTATUS
+gckOS_PowerOffWhenIdle(
+	IN gckOS Os,
+	IN gctBOOL needProfile
 	);
 
 gceSTATUS
 gckOS_Reset(
-	IN gckOS Os
-	);
+ 	IN gckOS Os
+ 	);
 
 gceSTATUS
 gckOS_SetConstraint(
@@ -518,7 +771,7 @@ gckOS_NotifyIdle(
 	IN gctBOOL Idle
 	);
 
-gctUINT32
+gctUINT32 
 gckOS_GetTicks(
     void
     );
@@ -527,7 +780,15 @@ gceSTATUS
 gckOS_IdleProfile(
     IN gckOS Os,
     IN OUT gctUINT32* Timeslice,
-    OUT gctUINT32* IdleTime
+    OUT gctUINT32* IdleTime,
+    OUT gctUINT32* StateSwitchTimes
+    );
+
+gceSTATUS gckOS_DumpToFile(
+    IN gckOS Os,
+    IN gctCONST_STRING filename,
+    IN gctPOINTER logical,
+    IN gctSIZE_T size
     );
 
 #ifdef __QNXNTO__
@@ -596,6 +857,48 @@ gckOS_DeviceControl(
 	IN gctSIZE_T OutputBufferSize
 	);
 
+gceSTATUS gckOS_FreeProcessResource(IN gckOS os, gctUINT32 pid);
+
+/*******************************************************************************
+**
+**  gckOS_GetProcessID
+**
+**  Get current process ID.
+**
+**  INPUT:
+**
+**      Nothing.
+**
+**  OUTPUT:
+**
+**      gctUINT32_PTR ProcessID
+**          Pointer to the variable that receives the process ID.
+*/
+gceSTATUS
+gckOS_GetProcessID(
+    OUT gctUINT32_PTR ProcessID
+    );
+
+/*******************************************************************************
+**
+**  gckOS_GetThreadID
+**
+**  Get current thread ID.
+**
+**  INPUT:
+**
+**      Nothing.
+**
+**  OUTPUT:
+**
+**      gctUINT32_PTR ThreadID
+**          Pointer to the variable that receives the thread ID.
+*/
+gceSTATUS
+gckOS_GetThreadID(
+    OUT gctUINT32_PTR ThreadID
+    );
+
 /******************************************************************************\
 ********************************** Signal Object *********************************
 \******************************************************************************/
@@ -641,6 +944,14 @@ gckOS_WaitSignal(
 	IN gctUINT32 Wait
 	);
 
+/* Wait for a signal. */
+gceSTATUS
+gckOS_WaitSignalNoInterruptible(
+	IN gckOS Os,
+	IN gctSIGNAL Signal,
+	IN gctUINT32 Wait
+	);
+
 /* Map a user signal to the kernel space. */
 gceSTATUS
 gckOS_MapSignal(
@@ -648,6 +959,13 @@ gckOS_MapSignal(
 	IN gctSIGNAL Signal,
 	IN gctHANDLE Process,
 	OUT gctSIGNAL * MappedSignal
+	);
+
+/* UnMap a user signal */
+gceSTATUS
+gckOS_UnMapSignal(
+	IN gckOS Os,
+	IN gctSIGNAL MappedSignal
 	);
 
 /* Map user memory. */
@@ -675,7 +993,7 @@ gceSTATUS
 gcoOS_FlushCache(
     int fd,
     int offset,
-    int size
+    int size 
     );
 #endif
 #if !USE_NEW_LINUX_SIGNAL
@@ -684,6 +1002,7 @@ gceSTATUS
 gckOS_CreateUserSignal(
 	IN gckOS Os,
 	IN gctBOOL ManualReset,
+	IN gceSIGNAL_TYPE SignalType,
 	OUT gctINT * SignalID
 	);
 
@@ -780,6 +1099,96 @@ gckOS_SetDebugFile(
 	IN gctCONST_STRING FileName
 	);
 
+/*******************************************************************************
+** Broadcast interface.
+*/
+
+typedef enum _gceBROADCAST
+{
+    /* GPU might be idle. */
+    gcvBROADCAST_GPU_IDLE,
+
+    /* A commit is going to happen. */
+    gcvBROADCAST_GPU_COMMIT,
+
+    /* GPU seems to be stuck. */
+    gcvBROADCAST_GPU_STUCK,
+
+    /* First process gets attached. */
+    gcvBROADCAST_FIRST_PROCESS,
+
+    /* Last process gets detached. */
+    gcvBROADCAST_LAST_PROCESS,
+
+    /* AXI bus error. */
+    gcvBROADCAST_AXI_BUS_ERROR,
+}
+gceBROADCAST;
+
+gceSTATUS
+gckOS_Broadcast(
+    IN gckOS Os,
+    IN gckHARDWARE Hardware,
+    IN gceBROADCAST Reason
+    );
+
+/*******************************************************************************
+**
+**  gckOS_SetGPUPower
+**
+**  Set the power of the GPU on or off.
+**
+**  INPUT:
+**
+**      gckOS Os
+**          Pointer to a gckOS object.?
+**
+**      gctBOOL Power
+**          gcvTRUE to turn on the power, or gcvFALSE to turn off the power.
+**
+**  OUTPUT:
+**
+**      Nothing.
+*/
+gceSTATUS
+gckOS_SetGPUPower(
+    IN gckOS Os,
+    IN gctBOOL Clock,
+    IN gctBOOL Power
+    );
+
+/*******************************************************************************
+** Semaphores.
+*/
+
+/* Create a new semaphore. */
+gceSTATUS
+gckOS_CreateSemaphore(
+    IN gckOS Os,
+    OUT gctPOINTER * Semaphore
+    );
+
+/* Delete a semahore. */
+gceSTATUS
+gckOS_DestroySemaphore(
+    IN gckOS Os,
+    IN gctPOINTER Semaphore
+    );
+
+/* Acquire a semahore. */
+gceSTATUS
+gckOS_AcquireSemaphore(
+    IN gckOS Os,
+    IN gctPOINTER Semaphore
+    );
+
+/* Release a semahore. */
+gceSTATUS
+gckOS_ReleaseSemaphore(
+    IN gckOS Os,
+    IN gctPOINTER Semaphore
+    );
+
 /******************************************************************************\
 ********************************* gckHEAP Object ********************************
 \******************************************************************************/
@@ -842,7 +1251,6 @@ gckHEAP_Test(
 
 typedef struct _gckVIDMEM *			gckVIDMEM;
 typedef union  _gcuVIDMEM_NODE *	gcuVIDMEM_NODE_PTR;
-typedef struct _gckHARDWARE *		gckHARDWARE;
 typedef struct _gckKERNEL *			gckKERNEL;
 
 /* Construct a new gckVIDMEM object. */
@@ -970,6 +1378,10 @@ typedef enum _gceKERNEL_FLUSH
 	gcvFLUSH_DEPTH				= 0x02,
 	gcvFLUSH_TEXTURE			= 0x04,
 	gcvFLUSH_2D					= 0x08,
+    gcvFLUSH_ALL                = gcvFLUSH_COLOR
+                                | gcvFLUSH_DEPTH
+                                | gcvFLUSH_TEXTURE
+                                | gcvFLUSH_2D,
 }
 gceKERNEL_FLUSH;
 
@@ -1065,6 +1477,26 @@ gckKERNEL_QuerySettings(
 	IN gckKERNEL Kernel,
 	OUT gcsKERNEL_SETTINGS * Settings
 	);
+
+/*******************************************************************************
+**
+**  gckKERNEL_Recovery
+**
+**  Try to recover the GPU from a fatal error.
+**
+**  INPUT:
+**
+**      gckKERNEL Kernel
+**          Pointer to an gckKERNEL object.
+**
+**  OUTPUT:
+**
+**      Nothing.
+*/
+gceSTATUS
+gckKERNEL_Recovery(
+    IN gckKERNEL Kernel
+    );
 
 /******************************************************************************\
 ******************************* gckHARDWARE Object *****************************
@@ -1444,8 +1876,7 @@ gceSTATUS
 gckEVENT_Signal(
 	IN gckEVENT Event,
 	IN gctSIGNAL Signal,
-	IN gceKERNEL_WHERE FromWhere,
-	IN gctBOOL Locking
+	IN gceKERNEL_WHERE FromWhere
 	);
 
 /* Schedule an Unlock event. */
@@ -1460,8 +1891,7 @@ gckEVENT_Unlock(
 gceSTATUS
 gckEVENT_Submit(
 	IN gckEVENT Event,
-	IN gctBOOL Wait,
-	IN gctBOOL Locking
+	IN gctBOOL Wait
 	);
 
 struct _gcsQUEUE;
@@ -1479,6 +1909,7 @@ gckEVENT_Notify(
 	IN gckEVENT Event,
 	IN gctBOOL IsReset
 	);
+
 
 /* Event callback routine. */
 gceSTATUS
@@ -1537,7 +1968,6 @@ gceSTATUS
 gckCOMMAND_Reserve(
 	IN gckCOMMAND Command,
 	IN gctSIZE_T RequestedBytes,
-	IN gctBOOL Locking,
 	OUT gctPOINTER * Buffer,
 	OUT gctSIZE_T * BufferSize
 	);
@@ -1552,8 +1982,7 @@ gckCOMMAND_Release(
 gceSTATUS
 gckCOMMAND_Execute(
 	IN gckCOMMAND Command,
-	IN gctSIZE_T RequstedBytes,
-	IN gctBOOL Locking
+	IN gctSIZE_T RequstedBytes
 	);
 
 /* Stall the command queue. */

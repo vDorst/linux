@@ -10,7 +10,7 @@
 *    This program is distributed in the hope that it will be useful,
 *    but WITHOUT ANY WARRANTY; without even the implied warranty of
 *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public Lisence for more details.
+*    GNU General Public License for more details.
 *
 *    You should have received a copy of the GNU General Public License
 *    along with this program; if not write to the Free Software
@@ -98,8 +98,9 @@ gckKERNEL_Construct(
 	/* Save context. */
 	kernel->context = Context;
 
-	/* No clients attached. */
-	kernel->clients = 0;
+    /* Construct atom holding number of clients. */
+    kernel->atomClients = gcvNULL;
+    gcmkONERROR(gckOS_AtomConstruct(Os, &kernel->atomClients));
 #if gcdSECURE_USER
     kernel->cacheSlots     = 0;
     kernel->cacheTimeStamp = 0;
@@ -151,28 +152,42 @@ gckKERNEL_Construct(
 	return gcvSTATUS_OK;
 
 OnError:
-	if (kernel->event != gcvNULL)
+	if (kernel != gcvNULL)
 	{
-		gcmkVERIFY_OK(gckEVENT_Destroy(kernel->event));
-	}
+    	if (kernel->event != gcvNULL)
+	    {
+    	    gcmkVERIFY_OK(gckEVENT_Destroy(kernel->event));
+            kernel->event = gcvNULL;
+    	}
 
-	if (kernel->command != gcvNULL)
-	{
-		gcmkVERIFY_OK(gckCOMMAND_Destroy(kernel->command));
-	}
+   	 	if (kernel->command != gcvNULL)
+    	{
+		    gcmkVERIFY_OK(gckCOMMAND_Destroy(kernel->command));
+            kernel->command = gcvNULL;
+    	}
 
-	if (kernel->hardware != gcvNULL)
-	{
-		gcmkVERIFY_OK(gckHARDWARE_Destroy(kernel->hardware));
-	}
+    	if (kernel->hardware != gcvNULL)
+    	{
+        	gcmkVERIFY_OK(gckHARDWARE_Destroy(kernel->hardware));
+            kernel->hardware = gcvNULL;
+    	}
 
-    kernel->version = _GAL_VERSION_STRING_;
+        if (kernel->atomClients != gcvNULL)
+        {
+            gcmkVERIFY_OK(gckOS_AtomDestroy(Os, kernel->atomClients));
+            kernel->atomClients = gcvNULL;
+        }
+
+    kernel->version = _GC_VERSION_STRING_;
 
 #if MRVL_LOW_POWER_MODE_DEBUG
 	gcmkVERIFY_OK(
 		gckOS_Free(Os, kernel->kernelMSG));
+    kernel->kernelMSG = gcvNULL;
 #endif
-	gcmkVERIFY_OK(gckOS_Free(Os, kernel));
+   	gcmkVERIFY_OK(gckOS_Free(Os, kernel));
+    kernel = gcvNULL;
+	}
 
 	/* Return the error. */
 	gcmkFOOTER();
@@ -207,27 +222,50 @@ gckKERNEL_Destroy(
 
 
 	/* Destroy the gckMMU object. */
-	gcmkVERIFY_OK(gckMMU_Destroy(Kernel->mmu));
-
+    if(Kernel->mmu != gcvNULL)
+    {
+        gcmkVERIFY_OK(gckMMU_Destroy(Kernel->mmu));
+        Kernel->mmu = gcvNULL;
+    }
+    
 	/* Destroy the gckEVENT object. */
-	gcmkVERIFY_OK(gckEVENT_Destroy(Kernel->event));
+    if(Kernel->event != gcvNULL)
+    {    	
+        gcmkVERIFY_OK(gckEVENT_Destroy(Kernel->event));
+        Kernel->event = gcvNULL;
+    }
 
 	/* Destroy the gckCOMMNAND object. */
-	gcmkVERIFY_OK(gckCOMMAND_Destroy(Kernel->command));
+    if(Kernel->command != gcvNULL)
+    {
+        gcmkVERIFY_OK(gckCOMMAND_Destroy(Kernel->command));
+        Kernel->command = gcvNULL;
+    }
 
-	/* Destroy the gckHARDWARE object. */
-	gcmkVERIFY_OK(gckHARDWARE_Destroy(Kernel->hardware));
+    /* Destroy the gckHARDWARE object. */
+    if(Kernel->hardware != gcvNULL)
+    {
+        gcmkVERIFY_OK(gckHARDWARE_Destroy(Kernel->hardware));
+        Kernel->hardware = gcvNULL;
+    }
 
+    /* Detsroy the client atom. */
+    if(Kernel->atomClients != gcvNULL)
+    {
+        gcmkVERIFY_OK(gckOS_AtomDestroy(Kernel->os, Kernel->atomClients));
+        Kernel->atomClients = gcvNULL;
+    }
 	/* Mark the gckKERNEL object as unknown. */
 	Kernel->object.type = gcvOBJ_UNKNOWN;
 
 #if MRVL_LOW_POWER_MODE_DEBUG
     gcmkVERIFY_OK(
 		gckOS_Free(Kernel->os, Kernel->kernelMSG));
+    Kernel->kernelMSG = gcvNULL;
 #endif
 	/* Free the gckKERNEL object. */
 	gcmkVERIFY_OK(gckOS_Free(Kernel->os, Kernel));
-
+    Kernel = gcvNULL;
 	/* Success. */
 	gcmkFOOTER_NO();
 	return gcvSTATUS_OK;
@@ -791,6 +829,8 @@ gckKERNEL_Dispatch(
 
 #if !USE_NEW_LINUX_SIGNAL
 	case gcvHAL_USER_SIGNAL:
+     	gcmkTRACE_ZONE(gcvLEVEL_INFO, gcvZONE_KERNEL,
+				   "Dispatching gcvHAL_USER_SIGNAL %d", Interface->u.UserSignal.command);
 		/* Dispatch depends on the user signal subcommands. */
 		switch(Interface->u.UserSignal.command)
 		{
@@ -799,6 +839,7 @@ gckKERNEL_Dispatch(
 			gcmkONERROR(
 				gckOS_CreateUserSignal(Kernel->os,
 									   Interface->u.UserSignal.manualReset,
+                                       Interface->u.UserSignal.signalType,
 									   &Interface->u.UserSignal.id));
 			break;
 
@@ -840,11 +881,18 @@ gckKERNEL_Dispatch(
 		break;
 
     case gcvHAL_QUERY_POWER_MANAGEMENT_STATE:
+        /* Chip is not idle. */
+        Interface->u.QueryPowerManagement.isIdle = gcvFALSE;
+
 		/* Query the power management state. */
-		gcmkONERROR(
-			gckHARDWARE_QueryPowerManagementState(
-				Kernel->hardware,
-				&Interface->u.QueryPowerManagement.state));
+        gcmkONERROR(gckHARDWARE_QueryPowerManagementState(
+            Kernel->hardware,
+            &Interface->u.QueryPowerManagement.state));
+
+        /* Query the idle state. */
+        gcmkONERROR(
+            gckHARDWARE_QueryIdle(Kernel->hardware,
+                                  &Interface->u.QueryPowerManagement.isIdle));
         break;
 
     case gcvHAL_READ_REGISTER:
@@ -974,7 +1022,7 @@ gckKERNEL_Dispatch(
                                       Interface->u.Cache.bytes);
         }
 		break;
-
+    	
 	default:
 		/* Invalid command. */
 		gcmkONERROR(gcvSTATUS_INVALID_ARGUMENT);
@@ -1008,6 +1056,7 @@ gckKERNEL_AttachProcess(
 	)
 {
 	gceSTATUS status;
+    gctINT32 old;
 
 	gcmkHEADER_ARG("Kernel=0x%x Attach=%d", Kernel, Attach);
 
@@ -1016,29 +1065,25 @@ gckKERNEL_AttachProcess(
 
 	if (Attach)
 	{
-		if (Kernel->clients == 0)
-		{
-			/* First client attached, switch to ON power state. */
-			gcmkONERROR(
-				gckHARDWARE_SetPowerManagementState(Kernel->hardware,
-													gcvPOWER_ON));
-		}
+        /* Increment the number of clients attached. */
+        gcmkONERROR(
+            gckOS_AtomIncrement(Kernel->os, Kernel->atomClients, &old));
 
-		/* Increment the number of clients attached. */
-		Kernel->clients += 1;
-	}
+        if (old == 0)
+        {
+            /* gcmkONERROR(gckHARDWARE_SetPowerManagementState(Kernel->hardware, gcvPOWER_ON)); */
+        }
+    }
 
 	else
 	{
 		/* Decrement the number of clients attached. */
-		Kernel->clients -= 1;
+        gcmkONERROR(
+            gckOS_AtomDecrement(Kernel->os, Kernel->atomClients, &old));
 
-		if (Kernel->clients == 0)
+        if (old == 1)
 		{
-			/* Last client detached, switch to SUSPEND power state. */
-			gcmkONERROR(
-				gckHARDWARE_SetPowerManagementState(Kernel->hardware,
-													gcvPOWER_SUSPEND));
+            gcmkONERROR(gckHARDWARE_SetPowerManagementState(Kernel->hardware, gcvPOWER_OFF));
 
             /* Flush the debug cache. */
             gcmkPRINT("$$FLUSH$$");
@@ -1154,9 +1199,90 @@ gckKERNEL_MapLogicalToPhysical(
     return gcvSTATUS_OK;
 
 OnError:
+    gcmkLOG_ERROR_STATUS();
     /* Return the status. */
     gcmkFOOTER();
     return status;
 }
 #endif
+
+/*******************************************************************************
+**
+**  gckKERNEL_Recovery
+**
+**  Try to recover the GPU from a fatal error.
+**
+**  INPUT:
+**
+**      gckKERNEL Kernel
+**          Pointer to an gckKERNEL object.
+**
+**  OUTPUT:
+**
+**      Nothing.
+*/
+gceSTATUS
+gckKERNEL_Recovery(
+    IN gckKERNEL Kernel
+    )
+{
+    gceSTATUS status;
+    gckEVENT event;
+    gckHARDWARE hardware;
+#if gcdSECURE_USER
+    gctUINT32 processID;
+#endif
+
+    gcmkHEADER_ARG("Kernel=0x%x", Kernel);
+
+    /* Validate the arguemnts. */
+    gcmkVERIFY_OBJECT(Kernel, gcvOBJ_KERNEL);
+
+    /* Grab gckEVENT object. */
+    event = Kernel->event;
+    gcmkVERIFY_OBJECT(event, gcvOBJ_EVENT);
+
+    /* Grab gckHARDWARE object. */
+    hardware = Kernel->hardware;
+    gcmkVERIFY_OBJECT(hardware, gcvOBJ_HARDWARE);
+
+    /* Handle all outstanding events now. */
+    event->pending = ~0U;
+    gcmkONERROR(gckEVENT_Notify(event, 1));
+
+    /* Again in case more events got submitted. */
+    event->pending = ~0U;
+    gcmkONERROR(gckEVENT_Notify(event, 2));
+
+#if gcdSECURE_USER
+    /* Flush the secure mapping cache. */
+    gcmkONERROR(gckOS_GetProcessID(&processID));
+    gcmkONERROR(gckKERNEL_MapLogicalToPhysical(Kernel, processID, gcvNULL));
+#endif
+
+    /* Try issuing a soft reset for the GPU. */
+    status = gckHARDWARE_Reset(hardware);
+    if (status == gcvSTATUS_NOT_SUPPORTED)
+    {
+        /* Switch to OFF power.  The next submit should return the GPU to ON
+        ** state. */
+        gcmkONERROR(
+            gckHARDWARE_SetPowerManagementState(hardware,
+                                                gcvPOWER_OFF_RECOVERY));
+    }
+    else
+    {
+        /* Bail out on reset error. */
+        gcmkONERROR(status);
+    }
+
+    /* Success. */
+    gcmkFOOTER_NO();
+    return gcvSTATUS_OK;
+
+OnError:
+    /* Return the status. */
+    gcmkFOOTER();
+    return status;
+}
 

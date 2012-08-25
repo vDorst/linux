@@ -413,6 +413,9 @@ struct _gcSHADER
 
 	/* Optimization option. */
 	gctUINT						optimizationOption;
+
+    /* has loop ? */
+    gctBOOL                     hasLoop;
 };
 
 /******************************************************************************\

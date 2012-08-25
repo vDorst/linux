@@ -10,7 +10,7 @@
 *    This program is distributed in the hope that it will be useful,
 *    but WITHOUT ANY WARRANTY; without even the implied warranty of
 *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public Lisence for more details.
+*    GNU General Public License for more details.
 *
 *    You should have received a copy of the GNU General Public License
 *    along with this program; if not write to the Free Software
@@ -178,6 +178,7 @@ _Collect(
 	return gcvSTATUS_OK;
 
 OnError:
+    gcmkLOG_ERROR_STATUS();
 	/* Return the staus. */
 	return status;
 }
@@ -275,6 +276,9 @@ gckMMU_Construct(
 	gcmkONERROR(
 		gckHARDWARE_SetMMU(hardware, (gctPOINTER) mmu->pageTableLogical));
 
+	/* Reset used page table entries. */
+	mmu->pageTableUsedEntries = 0;
+
 	/* Return the gckMMU object pointer. */
 	*Mmu = mmu;
 
@@ -283,6 +287,7 @@ gckMMU_Construct(
 	return gcvSTATUS_OK;
 
 OnError:
+    gcmkLOG_ERROR_STATUS();
 	/* Roll back. */
 	if (mmu != gcvNULL)
 	{
@@ -294,6 +299,7 @@ OnError:
 									 mmu->pageTablePhysical,
 									 (gctPOINTER) mmu->pageTableLogical,
 									 mmu->pageTableSize));
+            mmu->pageTableLogical = gcvNULL;
 		}
 
 		if (mmu->pageTableMutex != gcvNULL)
@@ -301,6 +307,7 @@ OnError:
 			/* Delete the mutex. */
 			gcmkVERIFY_OK(
 				gckOS_DeleteMutex(os, mmu->pageTableMutex));
+            mmu->pageTableMutex = gcvNULL;
 		}
 
 #ifdef __QNXNTO__
@@ -309,6 +316,7 @@ OnError:
 			/* Delete the mutex. */
 			gcmkVERIFY_OK(
 				gckOS_DeleteMutex(os, mmu->nodeMutex));
+            mmu->nodeMutex = gcvNULL;
 		}
 #endif
 
@@ -317,6 +325,8 @@ OnError:
 
 		/* Free the allocates memory. */
 		gcmkVERIFY_OK(gckOS_Free(os, mmu));
+
+        mmu = gcvNULL;
 	}
 
 	/* Return the status. */
@@ -363,25 +373,41 @@ gckMMU_Destroy(
 #endif
 
 	/* Free the page table. */
-	gcmkVERIFY_OK(
-		gckOS_FreeContiguous(Mmu->os,
-							 Mmu->pageTablePhysical,
-							 (gctPOINTER) Mmu->pageTableLogical,
-							 Mmu->pageTableSize));
+    if(Mmu->pageTableLogical != gcvNULL)
+    {
+        gcmkVERIFY_OK(
+    		gckOS_FreeContiguous(Mmu->os,
+    							 Mmu->pageTablePhysical,
+    							 (gctPOINTER) Mmu->pageTableLogical,
+    							 Mmu->pageTableSize));
+        Mmu->pageTableLogical = gcvNULL;
+    }
 
 #ifdef __QNXNTO__
-	/* Delete the node list mutex. */
-	gcmkVERIFY_OK(gckOS_DeleteMutex(Mmu->os, Mmu->nodeMutex));
+		if (Mmu->nodeMutex != gcvNULL)
+		{
+			/* Delete the mutex. */
+			gcmkVERIFY_OK(
+				gckOS_DeleteMutex(Mmu->os, Mmu->nodeMutex));
+            Mmu->nodeMutex = gcvNULL;
+		}
 #endif
 
-	/* Delete the page table mutex. */
-	gcmkVERIFY_OK(gckOS_DeleteMutex(Mmu->os, Mmu->pageTableMutex));
+    if (Mmu->pageTableMutex != gcvNULL)
+	{
+		/* Delete the mutex. */
+		gcmkVERIFY_OK(
+			gckOS_DeleteMutex(Mmu->os, Mmu->pageTableMutex));
+        Mmu->pageTableMutex = gcvNULL;
+	}
 
 	/* Mark the gckMMU object as unknown. */
 	Mmu->object.type = gcvOBJ_UNKNOWN;
 
 	/* Free the gckMMU object. */
 	gcmkVERIFY_OK(gckOS_Free(Mmu->os, Mmu));
+
+    Mmu = gcvNULL;
 
 	/* Success. */
 	gcmkFOOTER_NO();
@@ -553,15 +579,20 @@ gckMMU_AllocatePages(
 		*Address = address;
 	}
 
+	/* Update used pageTable entries. */
+	Mmu->pageTableUsedEntries += PageCount;
+
 	/* Release the mutex. */
 	gcmkVERIFY_OK(gckOS_ReleaseMutex(Mmu->os, Mmu->pageTableMutex));
 
 	/* Success. */
 	gcmkFOOTER_ARG("*PageTable=0x%x *Address=%08x",
 				   *PageTable, gcmOPT_VALUE(Address));
+	
 	return gcvSTATUS_OK;
 
 OnError:
+    gcmkLOG_ERROR_ARGS("status=%d, mutex=%d", status, mutex);
 	if (mutex)
 	{
 		/* Release the mutex. */
@@ -628,6 +659,9 @@ gckMMU_FreePages(
 
 	/* We have free nodes. */
 	Mmu->freeNodes = gcvTRUE;
+
+	/* Update used pageTable entries. */
+	Mmu->pageTableUsedEntries -= PageCount;
 
 	/* Success. */
 	gcmkFOOTER_NO();

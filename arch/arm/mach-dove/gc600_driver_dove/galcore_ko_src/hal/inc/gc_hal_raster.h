@@ -10,7 +10,7 @@
 *    This program is distributed in the hope that it will be useful,
 *    but WITHOUT ANY WARRANTY; without even the implied warranty of
 *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public Lisence for more details.
+*    GNU General Public License for more details.
 *
 *    You should have received a copy of the GNU General Public License
 *    along with this program; if not write to the Free Software
@@ -234,6 +234,21 @@ gceSTATUS
 gco2D_Destroy(
 	IN gco2D Hardware
 	);
+
+
+/* Start and end of gco2D draws */
+gceSTATUS
+gco2D_Begin(
+	IN gco2D Engine,
+	IN gctUINT cmdSize
+	);
+
+gceSTATUS
+gco2D_End(
+	IN gco2D Engine
+	);
+
+
 
 /* Sets the maximum number of brushes in the brush cache. */
 gceSTATUS

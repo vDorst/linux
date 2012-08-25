@@ -10,7 +10,7 @@
 *    This program is distributed in the hope that it will be useful,
 *    but WITHOUT ANY WARRANTY; without even the implied warranty of
 *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public Lisence for more details.
+*    GNU General Public License for more details.
 *
 *    You should have received a copy of the GNU General Public License
 *    along with this program; if not write to the Free Software
@@ -40,9 +40,6 @@
 #include <linux/dma-mapping.h>
 #include <linux/kthread.h>
 
-#ifdef ANDROID
-#include <linux/earlysuspend.h>
-#endif
 #ifdef MODVERSIONS
 #  include <linux/modversions.h>
 #endif
@@ -53,6 +50,11 @@
 
 #define NTSTRSAFE_NO_CCH_FUNCTIONS
 #include "gc_hal.h"
+
+#if MRVL_CONFIG_ENABLE_EARLYSUSPEND
+#include <linux/earlysuspend.h>
+#endif
+
 #include "gc_hal_driver.h"
 #include "gc_hal_kernel.h"
 #include "gc_hal_kernel_device.h"

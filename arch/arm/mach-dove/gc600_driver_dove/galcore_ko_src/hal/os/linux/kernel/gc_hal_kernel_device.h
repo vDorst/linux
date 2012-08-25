@@ -10,7 +10,7 @@
 *    This program is distributed in the hope that it will be useful,
 *    but WITHOUT ANY WARRANTY; without even the implied warranty of
 *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public Lisence for more details.
+*    GNU General Public License for more details.
 *
 *    You should have received a copy of the GNU General Public License
 *    along with this program; if not write to the Free Software
@@ -35,19 +35,15 @@
 /******************************************************************************\
 ******************************* gckGALDEVICE Structure *******************************
 \******************************************************************************/
-#if defined CONFIG_CPU_PXA910
-#if POWER_OFF_GC_WHEN_IDLE
 typedef enum _gcePOWRE_MODE
 {
     gcvPM_NORMAL,
+#if MRVL_CONFIG_ENABLE_EARLYSUSPEND
     gcvPM_EARLY_SUSPEND,
-    gcvPM_LATE_RESUME,
+#endif
     gcvPM_SUSPEND,
-    gcvPM_RESUME
 }
 gcePOWER_MODE;
-#endif
-#endif
 
 typedef struct _gckProfNode
 {
@@ -96,47 +92,67 @@ typedef struct _gckGALDEVICE
 
 	/* Signal management. */
 	gctINT				signal;
-#if defined CONFIG_PXA_DVFM || defined CONFIG_CPU_MMP2
+    
+#if MRVL_CONFIG_ENABLE_DVFM
     /* dvfm device index */
     gctINT              dvfm_dev_index;
+#endif
 
-    /* dvfm notifier */
-    struct notifier_block *dvfm_notifier;
-
-    /* GC register state can't be retained
-       after existing form D2 on PV2 board.
-       So we must reset GC on this case.
-    */
-    gctBOOL             needResetAfterD2;
-    gctBOOL             needD2DebugInfo;
-    gctBOOL             enableMdelay;
-    gctBOOL             enableD0CS;
-    gctBOOL             enableD1;
-    gctBOOL             enableD2;
-    gctBOOL             enableCG;
-
-#elif defined CONFIG_CPU_PXA910
-#if POWER_OFF_GC_WHEN_IDLE
+    /* current power mode */
     gcePOWER_MODE       currentPMode;
-    gctPOINTER          mutexGCDevice;
-#endif
 
-#endif
     /* do silent reset */
-    gctBOOL             reset;
+    gctBOOL             silentReset;
+    gctBOOL             powerDebug;
+    
+    /* power off GC when idle */
+    gctBOOL             powerOffWhenIdle;
+    gctUINT32           profileStep;
+    gctUINT32           profileTimeSlice;
+    gctUINT32           profileTailTimeSlice;
+    gctUINT32           idleThreshold;
+    gctBOOL             needPowerOff;
+    gctBOOL             clkOffOnly;
+
+    /* print pid of the process that is using GC */
     gctBOOL             printPID;
+
+    /* enable/disable DVFM LPM by default */
     gctBOOL             enableDVFM;
     gctBOOL             enableLowPowerMode;
+
+    /* mark GC power and clk status */
+    gctBOOL             clkEnabled;
 
     /* profiling data */
     struct _gckProfNode profNode[100];
     gctUINT32           lastNodeIndex;
 
 #if MRVL_TIMER
+    /* the timer thread */
     struct timer_list   timer;
     struct semaphore	timersema;
     struct task_struct	*timerthread;
 #endif
+
+#if MRVL_PROFILE_THREAD
+    /* the profile thread */
+    struct task_struct	*profilethread;
+#endif
+
+#if MRVL_GUARD_THREAD
+    /* the guard thread */
+    struct task_struct	*guardthread;
+#endif
+
+	/* GC memory profile */
+	gctSIZE_T			reservedMem;
+	gctINT32			vidMemUsage;
+	gctINT32			contiguousMemUsage;
+	gctINT32			virtualMemUsage;
+
+    /* simulate memory allocation random fail */
+    gctINT32            memRandomFailRate;
 }
 * gckGALDEVICE;
 

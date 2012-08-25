@@ -10,7 +10,7 @@
 *    This program is distributed in the hope that it will be useful,
 *    but WITHOUT ANY WARRANTY; without even the implied warranty of
 *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public Lisence for more details.
+*    GNU General Public License for more details.
 *
 *    You should have received a copy of the GNU General Public License
 *    along with this program; if not write to the Free Software
@@ -431,6 +431,18 @@ gcoINDEX_GetIndexRange(
 	IN gctUINT32 Count,
 	OUT gctUINT32 * MinimumIndex,
 	OUT gctUINT32 * MaximumIndex
+	);
+/* Convert Index32 to Index16*/
+gceSTATUS
+gcoINDEX_CovertFrom32To16(
+	IN gcoINDEX Index,
+    OUT gcoINDEX* Index16
+	);
+/* Convert Index32 to Index16*/
+gceSTATUS
+gcoINDEX_CovertFrom32To16(
+	IN gcoINDEX Index,
+    OUT gcoINDEX* Index16
 	);
 
 /* Dynamic buffer management. */
@@ -992,6 +1004,15 @@ gco3D_SetCentroids(
 	IN gctUINT32	Index,
 	IN gctPOINTER	Centroids
 	);
+
+/*Get 3D engine status*/
+gceSTATUS
+gco3D_Get3DStatus(
+	IN 	gco3D Engine,
+	OUT gctBOOL_PTR*   Idle,
+	OUT gctINT_PTR     Count,
+	OUT gctINT_PTR	  CurrentCmdIndex
+	);
 /*----------------------------------------------------------------------------*/
 /*-------------------------- gco3D Fragment Processor ------------------------*/
 
@@ -1165,9 +1186,38 @@ gcoTEXTURE_Destroy(
 	IN gcoTEXTURE Texture
 	);
 
+/*Destroy a texture level*/
+gceSTATUS
+gcoTEXTURE_DestroyLevel(
+	IN gcoTEXTURE Texture,
+	IN gctINT         Level
+	);
+
+/*check texture surface can be reuse*/
+gctBOOL gcoTEXTURE_BConsistent(
+	IN gcoTEXTURE Texture,
+	IN gctINT Level,
+	IN gctSIZE_T Width,
+	IN gctSIZE_T Height,
+	IN gceSURF_FORMAT Format
+	);
+
 /* Upload data to an gcoTEXTURE object. */
 gceSTATUS
 gcoTEXTURE_Upload(
+	IN gcoTEXTURE Texture,
+	IN gceTEXTURE_FACE Face,
+	IN gctUINT Width,
+	IN gctUINT Height,
+	IN gctUINT Slice,
+	IN gctCONST_POINTER Memory,
+	IN gctINT Stride,
+	IN gceSURF_FORMAT Format
+	);
+
+/* Upload data to an gcoTEXTURE object. */
+gceSTATUS
+gcoTEXTURE_Upload_Linear(
 	IN gcoTEXTURE Texture,
 	IN gceTEXTURE_FACE Face,
 	IN gctUINT Width,
@@ -1193,6 +1243,22 @@ gcoTEXTURE_UploadSub(
 	IN gctINT Stride,
 	IN gceSURF_FORMAT Format
 	);
+
+gceSTATUS
+gcoTEXTURE_UploadSub_Linear(
+	IN gcoTEXTURE Texture,
+	IN gctUINT MipMap,
+	IN gceTEXTURE_FACE Face,
+	IN gctUINT X,
+	IN gctUINT Y,
+	IN gctUINT Width,
+	IN gctUINT Height,
+	IN gctUINT Slice,
+	IN gctCONST_POINTER Memory,
+	IN gctINT Stride,
+	IN gceSURF_FORMAT Format
+	);
+
 
 /* Upload compressed data to an gcoTEXTURE object. */
 gceSTATUS
@@ -1291,6 +1357,11 @@ gcoTEXTURE_SetBorderColorF(
 	IN gctFLOAT Alpha
 	);
 
+gctBOOL
+gcoTEXTURE_IsSupportMipMap(
+	IN gcoTEXTURE Texture
+	);
+
 gceSTATUS
 gcoTEXTURE_SetMinFilter(
 	IN gcoTEXTURE Texture,
@@ -1348,7 +1419,8 @@ gcoTEXTURE_SetLODMaxF(
 gceSTATUS
 gcoTEXTURE_Bind(
 	IN gcoTEXTURE Texture,
-	IN gctINT Sampler
+	IN gctINT Sampler,
+	IN gctUINT Param
 	);
 
 gceSTATUS
@@ -1479,9 +1551,15 @@ gcoSTREAM_DestroyReserveMemory(
     IN gcoHAL Hal);
 
 gceSTATUS
-gcoSTREAM_GetReserveMemory(
+gcoSTREAM_GetReserveMemIndexOffset(
     IN gcoHAL Hal,
-    IN gctUINT32 requestSize,
+    OUT gctUINT32 * reserveMemoryIndex,
+    OUT gctUINT32 * reserveMemoryOffset);
+
+gceSTATUS
+gcoSTREAM_GetReserveMemory(
+    IN gcoHAL Hal, 
+    IN gctUINT32 requestSize, 
     IN gcoSTREAM stream,
     IN gcoINDEX index
     );
@@ -1512,6 +1590,8 @@ typedef struct _gcsSTREAM_INFO
 	gctSIZE_T			size;
 	gctCONST_POINTER	data;
 	gctUINT				stride;
+    gctUINT             offset;
+    gcoSTREAM           stream;
 }
 gcsSTREAM_INFO, * gcsSTREAM_INFO_PTR;
 
