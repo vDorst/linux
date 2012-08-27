@@ -11,11 +11,20 @@
 #include <linux/types.h>
 
 #define MV64XXX_I2C_CTLR_NAME	"mv64xxx_i2c"
+#define MV64XXX_I2C_EXPANDER_NAME	"mv64xxx_i2c_exp"
 
 /* i2c Platform Device, Driver Data */
 struct mv64xxx_i2c_pdata {
 	u32	freq_m;
 	u32	freq_n;
+	u32	delay_after_stop;
+	u32	timeout;	/* In milliseconds, used only when expander not enabled */
+	int     (*select_exp_port)	(unsigned int port_id);
+};
+
+/* i2c expander driver data */
+struct mv64xxx_i2c_exp_pdata {
+	struct platform_device  *hw_adapter;
 	u32	timeout;	/* In milliseconds */
 };
 
