@@ -56,6 +56,12 @@ static int dovefb_fill_edid(struct fb_info *fi,
 static int wait_for_vsync(struct dovefb_layer_info *dfli);
 static void dovefb_set_defaults(struct dovefb_layer_info *dfli);
 
+#ifdef CONFIG_TDA19988
+extern const char *tda19988_get_edid(int *num_of_blocks);
+extern int tda19988_configure_tx_inout(int x, int y, int interlaced, int hz);
+#endif
+
+
 #define AXI_BASE_CLK	(2000000000ll)	/* 2000MHz */
 
 static const u8 edid_header[] = {
@@ -545,9 +551,6 @@ static u8 *make_analog_fake_edid(void)
 
 	return edid_block;
 }
-#ifdef CONFIG_TDA19988
-extern	int configure_tx_inout(int x, int y, int interlaced, int hz);
-#endif
 
 static int dovefb_gfx_set_par(struct fb_info *fi)
 {
@@ -628,7 +631,7 @@ static int dovefb_gfx_set_par(struct fb_info *fi)
 	printk(KERN_INFO "Setting HDMI TX resolution to %dx%d%c @ %d\n",
 		m->xres, m->yres, (m->vmode & FB_VMODE_INTERLACED) ? 'i' : 'p',
 		m->refresh);
-	if (!configure_tx_inout(m->xres, m->yres,
+	if (!tda19988_configure_tx_inout(m->xres, m->yres,
 		(m->vmode & FB_VMODE_INTERLACED) ? 1 : 0, m->refresh))
 		printk(KERN_ERR "Setting HDMI TX mode failed\n");
 #endif
@@ -1175,15 +1178,13 @@ static u8 *pull_edid_from_i2c(int busid, int addr)
 }
 #endif
 
-#ifdef CONFIG_TDA19988
-extern char *tda19988_get_edid(int *num_of_blocks);
-#endif
 static u8 *dove_read_edid(struct fb_info *fi, struct dovefb_mach_info *dmi)
 {
 	char *edid_data = NULL;
 #ifdef CONFIG_TDA19988
 	int num_of_blocks;
-	char *nxp_edid;
+	const char *nxp_edid;
+
 	nxp_edid = tda19988_get_edid(&num_of_blocks);
 	if (nxp_edid == NULL) /* EDID not ready */
 		return NULL;

@@ -30,7 +30,7 @@
 #include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/input.h>
-#include <asm/uaccess.h>
+#include <linux/poll.h>
 #include <linux/gpio.h>
 
 /* HDMI DevLib */
@@ -41,7 +41,9 @@
 /* local */
 #include "tda998x_version.h"
 #include "tda998x_cec.h"
+#include "tda998x_i2c.h"
 #include "tda998x_ioctl.h"
+#include "tda998x_exports.h"
 
 /*
  *
@@ -60,8 +62,8 @@ static const struct i2c_device_id this_i2c_id[] = {
    { CEC_NAME, 0 },
    { },
 };
+static struct cdev our_cdev;
 static cec_instance our_instance;
-static struct cdev our_cdev, *this_cdev=&our_cdev;
 
 #ifdef TWL4030_HACK
 /* AL : hack to bypass keypad */
@@ -69,18 +71,6 @@ struct input_dev *gkp_input;
 extern struct input_dev *get_twm4030_input(void);
 #endif
 
-/*
- * Dependancies to HdmiTx module
- */
-
-extern void register_cec_interrupt(cec_callback_t fct); 
-extern void unregister_cec_interrupt(void); 
-extern short edid_phy_addr(void); 
-extern int hdmi_enable(void);
-extern int hdmi_disable(int event_tracking);
-extern cec_power get_hdmi_status(void);
-extern cec_power get_hpd_status(void);
-extern int edid_received(void);
 
 /*
  *  Module params
@@ -110,12 +100,11 @@ MODULE_PARM_DESC(addr, "Physical address (until EDID received)");
 
 
 /* 
- *  Get main and unique I2C Client driver handle
+ *  Get main and unique I2C Client driver handle (called from NXP SDK)
  */
 struct i2c_client *cecGetThisI2cClient(void)
 {
-   cec_instance *this=&our_instance;
-   return this->driver.i2c_client;
+   return our_instance.driver.i2c_client;
 }
 
 /*
@@ -152,6 +141,9 @@ static char *hdmi_cec_err_string(int err)
       }
 }
 
+#ifndef CEC_I2C_DEBUG
+static
+#endif
 char *cec_opcode(int op)
 {
    switch (op)
@@ -320,6 +312,12 @@ static char *cec_ioctl(int io)
       case CEC_IOCTL_DISABLE_CALIBRATION_CMD: {return "CEC_IOCTL_DISABLE_CALIBRATION_CMD";break;}
       case CEC_IOCTL_SEND_MSG_CMD: {return "CEC_IOCTL_SEND_MSG_CMD";break;}
       case CEC_IOCTL_SET_REGISTER_CMD: {return "CEC_IOCTL_SET_REGISTER_CMD";break;}
+
+      case CEC_IOCTL_GET_RAW_MODE_CMD: {return "CEC_IOCTL_GET_RAW_MODE_CMD";break;}
+      case CEC_IOCTL_SET_RAW_MODE_CMD: {return "CEC_IOCTL_SET_RAW_MODE_CMD";break;}
+      case CEC_IOCTL_GET_RAW_INFO_CMD: {return "CEC_IOCTL_GET_RAW_INFO_CMD";break;}
+      case CEC_IOCTL_SET_RX_ADDR_MASK_CMD: {return "CEC_IOCTL_SET_RX_ADDR_MASK_CMD";break;}
+
       default : {return "unknown";break;}
       }
 }
@@ -447,12 +445,20 @@ static void cec_on(cec_instance *this)
 
    disable_irq(gpio_to_irq(TDA_IRQ_CALIB));
 
+   /* turn GPIO into calib pulse generator */
+   err = gpio_direction_output(TDA_IRQ_CALIB,0); /* output (1 means try-state or high) */
+   if (err < 0) {
+	LOG(KERN_ERR,"Cannot access GPIO %d, err:%d\n",TDA_IRQ_CALIB,err);
+
+	enable_irq(gpio_to_irq(TDA_IRQ_CALIB));
+	return;
+   }
+
+   __gpio_set_value(TDA_IRQ_CALIB,1);
+
    this->cec.power = tmPowerOn;
    TRY(tmdlHdmiCecSetPowerState(this->cec.inst,this->cec.power));
 
-   /* turn GPIO into calib pulse generator */
-   gpio_direction_output(TDA_IRQ_CALIB,0); /* output (1 means try-state or high) */
-   __gpio_set_value(TDA_IRQ_CALIB,1);
    this->cec.clock = TMDL_HDMICEC_CLOCK_FRO;
    TRY(tmdlHdmiCecEnableCalibration(this->cec.inst,this->cec.clock));
    msleep(10);
@@ -476,14 +482,12 @@ static void cec_on(cec_instance *this)
    this->cec.setup.cecClockSource = this->cec.clock;
    TRY(tmdlHdmiCecInstanceSetup(this->cec.inst,&this->cec.setup));
 
-   /* turn GPIO into IRQ */
-   gpio_direction_input(TDA_IRQ_CALIB);
-   enable_irq(gpio_to_irq(TDA_IRQ_CALIB));
-
    LOG(KERN_INFO,"standby --> on\n");
 
  TRY_DONE:
-   (void)0;
+   /* turn GPIO into IRQ */
+   gpio_direction_input(TDA_IRQ_CALIB);
+   enable_irq(gpio_to_irq(TDA_IRQ_CALIB));
 }
 
 /*
@@ -503,41 +507,97 @@ static void cec_standby(cec_instance *this)
 }
 
 /*
+ * enable listening on a single logical addresses
+ */
+static void cec_listen_single(cec_instance *this, unsigned char rx_addr)
+{
+   int err;
+
+   LOG(KERN_INFO,"logAddr set to 0x%x\n", rx_addr);
+
+   TRY(tmdlHdmiCecSetLogicalAddress(this->cec.inst, rx_addr));
+
+   this->cec.rx_addr = rx_addr;
+   this->cec.rx_addr_mask = (1 << rx_addr) & 0x7fff;
+
+ TRY_DONE:
+   (void)0;
+}
+
+/*
+ * enable listening on multiple logical addresses
+ */
+static void cec_listen_multi(cec_instance *this, 
+                             unsigned short onMask, unsigned short offMask)
+{
+   int err;
+   unsigned short newMask, changeMask;
+
+   newMask = (this->cec.rx_addr_mask | onMask) & ~(offMask | 0x8000);
+   changeMask = newMask ^ this->cec.rx_addr_mask; 
+
+   if (changeMask & 0xff00) {
+       TRY(tmdlHdmiCecSetRegister(this->cec.inst, E_REG_ACKH, newMask >> 8));
+       this->cec.rx_addr_mask ^= changeMask & 0xff00;
+   } 
+
+   if (changeMask & 0x80ff) {
+       TRY(tmdlHdmiCecSetRegister(this->cec.inst, E_REG_ACKL, newMask & 0xff));
+       this->cec.rx_addr_mask ^= changeMask & 0x00ff;
+   }
+
+   LOG(KERN_INFO,"logAddrMask is now 0x%04x\n", this->cec.rx_addr_mask);
+
+ TRY_DONE:
+   (void)0;
+}
+
+/*
  *  CEC interrupt polling
  */
 static void cec_interrupt(struct work_struct *dummy)
 {
    cec_instance *this=&our_instance;
-   unsigned short new_phy_addr=edid_phy_addr();
+   cec_power display_active = get_hpd_status();
+   unsigned short new_phy_addr = edid_phy_addr();
    int err=0;
    
-   LOG(KERN_INFO,"%s called\n",__func__);
+   LOG(KERN_INFO,"called\n");
 
    /* switch on/off CEC */
-   if (!get_hpd_status() &&                     \
-       (this->cec.power == tmPowerOn)) {
+   if (!display_active && (this->cec.power == tmPowerOn)) {
       this->cec.source_status = CEC_POWER_STATUS_STANDBY;
 /*       TRY(tmdlHdmiCecInactiveSource(this->cec.inst,             \ */
 /*                                        this->cec.initiator,     \ */
 /*                                        this->cec.phy_addr)); */
       cec_standby(this);
    }
-   else if (get_hpd_status() &&                         \
-            (this->cec.power == tmPowerStandby)) {
+   else if (display_active && (this->cec.power == tmPowerStandby)) {
       /* send active msg when hdmi has been abled */
       cec_on(this);
+
+#ifndef GUI_OVER_HDMI
+      this->cec.source_status = CEC_POWER_STATUS_ON;
+#endif
    }
    /* new phy addr means new EDID, mean HPD ! */
    else if ((this->cec.phy_addr != new_phy_addr) &&        \
        (this->cec.source_status == CEC_POWER_STATUS_ON)) {
       LOG(KERN_INFO,"New physical address %02x\n",new_phy_addr);
       this->cec.phy_addr = new_phy_addr;
-      if (this->cec.phy_addr != 0xFFFF) {
-         this->cec.rx_addr = get_next_logical_addr(this->cec.device_type,CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST);
-         TRY(tmdlHdmiCecPollingMessage(this->cec.inst,this->cec.rx_addr));
-      }
+
+      if (!this->driver.raw_mode) {
+         if (this->cec.phy_addr != 0xFFFF) {
+            this->cec.rx_addr = get_next_logical_addr(
+               this->cec.device_type, CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST);
+            TRY(tmdlHdmiCecPollingMessage(this->cec.inst, this->cec.rx_addr));
+         }
+         else {
+            this->cec.rx_addr = CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST;
+         }
+      } 
       else {
-         this->cec.rx_addr = CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST;
+         // Todo: how to notify libCEC about this ??
       }
    }
 #ifdef GUI_OVER_HDMI
@@ -549,6 +609,7 @@ static void cec_interrupt(struct work_struct *dummy)
          msleep(200);
          TRY(tmdlHdmiCecActiveSource(this->cec.inst,this->cec.phy_addr));
          this->cec.source_status = CEC_POWER_STATUS_ON;
+         goto TRY_DONE;
       }
    }
 #endif
@@ -613,7 +674,7 @@ void polling_timeout(unsigned long arg)
          printk(KERN_INFO "Fake Rx message\n");
          this->driver.timer.data=0;
 
-         this->cec.frame.count = 4;
+         this->cec.frame.size = 4;
          this->cec.frame.addr = 4; /* 0-->4 (TV-->MediaPlayer1) */
          this->cec.frame.data[0]=0x46; /* opcode: "GiveOsd" */
          this->cec.frame.service = CEC_RX_DONE;
@@ -659,6 +720,7 @@ static void user_control(int key, int press)
 }
 #endif
 
+
 /*
  *  CEC callback
  */
@@ -668,18 +730,78 @@ static void eventCallbackCEC(tmdlHdmiCecEvent_t event, unsigned char *data, unsi
    cec_instance *this=&our_instance;
    int opcode;
    int initiator,receiver;
+   cec_frame *frame;
+   int new_tail;
+
+   if (this->driver.raw_mode) {
+      new_tail = (this->driver.read_queue_tail + 1) %
+                     ARRAY_SIZE(this->driver.read_queue);
+
+      frame = &this->driver.read_queue[this->driver.read_queue_tail];
+      memset(frame, 0, sizeof(frame[0]));
+
+      if (event == TMDL_HDMICEC_CALLBACK_MESSAGE_AVAILABLE) {
+
+         if (new_tail != this->driver.read_queue_head) {
+            frame->size    = length + 2;		/* sizeof(size) + sizeof(service) */
+            frame->service = CEC_RX_PKT;		/* this is an rx packet */
+            frame->addr    = data[0];			/* AddressByte */
+            memcpy(frame->data, &data[1], length - 1);	/* DataBytes[], length - sizeof(addr) */
+
+            initiator = (frame->addr >> 4) & 0x0F;
+            receiver  = frame->addr & 0x0F;
+            opcode    = frame->data[0];
+            LOG(KERN_INFO,"hdmicec:Rx:[%x--->%x] %s length:%d [%02x %02x %02x %02x]\n",
+               initiator,receiver,length > 1 ? cec_opcode(opcode) : "POLL",length, 
+               frame->data[0], frame->data[1], frame->data[2], frame->data[3]);
+
+            this->driver.read_queue_tail = new_tail;
+         }
+
+         wake_up_interruptible(&this->driver.wait_read);
+
+      } else if (event == TMDL_HDMICEC_CALLBACK_STATUS) {
+
+         if (new_tail != this->driver.read_queue_head) {
+            frame->size    = length + 2;		/* sizeof(size) + sizeof(service) */
+            frame->service = CEC_ACK_PKT;		/* this is an ACK/NAK packet */
+            frame->addr    = data[0];			/* AddressByte */
+            memcpy(frame->data, &data[1], length - 1);	/* DataBytes[], length - sizeof(addr) */
+
+            initiator = (frame->addr >> 4) & 0x0F;
+            receiver  = frame->addr & 0x0F;
+            opcode    = frame->data[0];
+            LOG(KERN_INFO,"hdmicec:ACK:[%x--->%x] %s lenght:%d [%02x %02x %02x %02x]\n",
+	      initiator,receiver,cec_rxstatus(opcode),length, 
+              frame->data[0], frame->data[1], frame->data[2], frame->data[3]);
+
+            this->driver.read_queue_tail = new_tail;
+         }
+
+	 this->driver.write_pending = 0;
+         wake_up_interruptible(&this->driver.wait_read);
+         wake_up_interruptible(&this->driver.wait_write);
+
+      } else {
+         LOG(KERN_ERR,"Oups ! Callback got invalid event %d !\n",event);
+      }
+
+      return;
+   }
+
 
    if (event == TMDL_HDMICEC_CALLBACK_MESSAGE_AVAILABLE) {
 
-      this->cec.frame.count = length;
-      this->cec.frame.addr = data[1]; /* .AddressByte */
+      this->cec.frame.size = length + 2;
+      this->cec.frame.addr = data[0]; /* .AddressByte */
       initiator = (this->cec.frame.addr >> 4) & 0x0F;
       this->cec.initiator = initiator;
       receiver = this->cec.frame.addr & 0x0F;
-      memcpy(&this->cec.frame.data,&data[2],length-2); /* .DataBytes[], length - siezof(length,addr,ack) */
+      memcpy(&this->cec.frame.data,&data[1],length-1); /* .DataBytes[], length - siezof(length,addr,ack) */
       opcode=this->cec.frame.data[0];
-      printk(KERN_INFO "hdmicec:Rx:[%x--->%x] %s length:%d addr:%d %02x%02x%02x%02x\n",initiator,receiver,cec_opcode(opcode), \
-          length,data[1],
+      LOG(KERN_INFO,"hdmicec:Rx:[%x--->%x] %s length:%d addr:%d %02x%02x%02x%02x\n",initiator,receiver,cec_opcode(opcode), \
+          length,
+          this->cec.frame.addr,
           this->cec.frame.data[0],                                      \
           this->cec.frame.data[1],                                      \
           this->cec.frame.data[2],                                      \
@@ -843,11 +965,11 @@ static void eventCallbackCEC(tmdlHdmiCecEvent_t event, unsigned char *data, unsi
    }
    else if (event == TMDL_HDMICEC_CALLBACK_STATUS) {
 
-      this->cec.frame.count = length;
-      this->cec.frame.addr = data[1]; /* .AddressByte */
+      this->cec.frame.size = length + 2;
+      this->cec.frame.addr = data[0]; /* .AddressByte */
       initiator = (this->cec.frame.addr >> 4) & 0x0F;
       receiver = this->cec.frame.addr & 0x0F;
-      memcpy(&this->cec.frame.data,&data[2],length-2); /* .DataBytes[], length - siezof(length,addr)  */
+      memcpy(&this->cec.frame.data,&data[1],length-1); /* .DataBytes[], length - siezof(length,addr)  */
       opcode=this->cec.frame.data[0];
       this->cec.frame.service = CEC_TX_DONE;
 
@@ -876,12 +998,12 @@ static void eventCallbackCEC(tmdlHdmiCecEvent_t event, unsigned char *data, unsi
             }
          }
          else {
-            printk(KERN_INFO "ACK [%x--->%x] %s\n",initiator,receiver,cec_rxstatus(opcode));
+            LOG(KERN_INFO,"ACK [%x--->%x] %s\n",initiator,receiver,cec_rxstatus(opcode));
          }
       }
       else {
          if (CEC_MSG_SUCCESS != opcode) {
-            printk(KERN_INFO "ACK [%x--->%x] %s\n",initiator,receiver,cec_rxstatus(opcode));
+            LOG(KERN_INFO,"ACK [%x--->%x] %s\n",initiator,receiver,cec_rxstatus(opcode));
          }
       }
 
@@ -900,7 +1022,7 @@ static void eventCallbackCEC(tmdlHdmiCecEvent_t event, unsigned char *data, unsi
 /*
  *  DevLib CEC opening
  */
-static int hdmi_cec_init(cec_instance *this)
+static int hdmi_cec_init(cec_instance *this, const char *osd_name)
 {
    int err=0;
 
@@ -913,20 +1035,21 @@ static int hdmi_cec_init(cec_instance *this)
 
 /*    this->cec.version = CEC_VERSION_1_4; */
    this->cec.version = CEC_VERSION_1_3a;
-   this->cec.osd_name.data[0]=0x54; /* TDA19989 by default */
-   this->cec.osd_name.data[1]=0x44;
-   this->cec.osd_name.data[2]=0x41;
-   this->cec.osd_name.data[3]=0x31;
-   this->cec.osd_name.data[4]=0x39;
-   this->cec.osd_name.data[5]=0x39;
-   this->cec.osd_name.data[6]=0x38;
-   this->cec.osd_name.data[7]=0x39;
-   this->cec.osd_name.length=8;
-   
+
+   if (!osd_name)
+      osd_name = "TDA19989";	/* TDA19989 by default */
+
+   strncpy(this->cec.osd_name.data, 
+           osd_name, sizeof(this->cec.osd_name.data));
+   this->cec.osd_name.length = 
+      min(strlen(osd_name), sizeof(this->cec.osd_name.data));
+     
+   this->cec.rx_addr = CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST;
+   this->cec.rx_addr_mask = 0;
+   this->cec.phy_addr = param_addr;			// 0xffff == unconfigured
+   this->cec.device_type = device_type(param_device);	// 4 == CEC_DEVICE_TYPE_PLAYBACK_DEVICE
+
    TRY(tmdlHdmiCecRegisterCallbacks(this->cec.inst,eventCallbackCEC));
-       
-   this->cec.phy_addr = param_addr;
-   this->cec.device_type = device_type(param_device);
 
  TRY_DONE:
    return err;
@@ -951,29 +1074,34 @@ static int hdmi_cec_init(cec_instance *this)
 
 static int this_cdev_open(struct inode *pInode, struct file *pFile)
 {
-   cec_instance *this;
-   int minor=iminor(pInode);
+   cec_instance *this = pFile->private_data;
+   int minor = iminor(pInode);
 
-   if(minor >= MAX_MINOR) {
+   if (minor >= MAX_MINOR) {
       printk(KERN_ERR "hdmicec:%s:only one cec opening please\n",__func__);
       return -EINVAL;
    }
 
-   if ((pFile->private_data != NULL) && (pFile->private_data != &our_instance)) {
-      printk(KERN_ERR "hdmicec:%s:pFile missmatch\n",__func__);
+   if (this && this != &our_instance) {
+      printk(KERN_ERR "hdmicec:%s:pFile mismatch\n",__func__);
+      return -EINVAL;
    }
-   this = pFile->private_data = &our_instance;
+
+   this = &our_instance;
+   pFile->private_data = this;
+
    down(&this->driver.sem);
 
-   LOG(KERN_INFO,"major:%d minor:%d user:%d\n", imajor(pInode), iminor(pInode), this->driver.user_counter);
+   LOG(KERN_INFO,"major:%d minor:%d user:%d\n", 
+       imajor(pInode), iminor(pInode), this->driver.user_counter);
 
    if ((this->driver.user_counter++) && (this->driver.minor == minor)) {
       /* init already done */
       up(&this->driver.sem);
       return 0;
    }
-   this->driver.minor = minor;
 
+   this->driver.minor = minor;
 
    up(&this->driver.sem);
    return 0;
@@ -995,9 +1123,10 @@ static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long 
    }
 
    if (_IOC_DIR(cmd) & _IOC_READ) 
-      err = !access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd)) || !arg;
+      err = !arg || !access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd));
    else if (_IOC_DIR(cmd) & _IOC_WRITE)
-      err = !access_ok(VERIFY_READ, (void __user *)arg, _IOC_SIZE(cmd)) || !arg;
+      err = !arg || !access_ok(VERIFY_READ, (void __user *)arg, _IOC_SIZE(cmd));
+
    if (err) {
       printk(KERN_ERR "hdmicec:%s:argument access denied (check address vs value)\n",__func__);
       printk(KERN_ERR "_IOC_DIR:%d arg:%lx\n",_IOC_DIR(cmd),arg);
@@ -1010,6 +1139,82 @@ static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long 
 
    switch ( _IOC_NR(cmd) )
       {
+      case CEC_IOCTL_SEND_MSG_CMD:
+         {
+	    cec_frame frame;
+
+            BUG_ON(copy_from_user(&frame, (void *)arg, sizeof(cec_frame)) != 0);
+
+            if (frame.size >= 3 && frame.size < sizeof(cec_frame)) {
+               /* set initiator to "broadcast" */
+               frame.addr |= CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST << 4;
+               TRY(tmdlHdmiCecSendMessage(this->cec.inst, &frame.addr, frame.size - 2));
+            }
+            break;
+         }
+
+      case CEC_IOCTL_GET_RAW_MODE_CMD:
+         {
+            BUG_ON(copy_to_user((void *)arg,&this->driver.raw_mode,sizeof(this->driver.raw_mode)) != 0);
+	    break;
+	 }
+
+      case CEC_IOCTL_SET_RAW_MODE_CMD:
+         {
+            unsigned char raw_mode;
+            BUG_ON(copy_from_user(&raw_mode,(void *)arg,sizeof(raw_mode)) != 0);
+
+            if (raw_mode < 2 && this->driver.raw_mode != raw_mode) {
+
+               this->driver.raw_mode = raw_mode;
+
+	       if (this->driver.raw_mode) {
+                  this->driver.write_pending = 0;
+                  this->driver.read_queue_head = this->driver.read_queue_tail;
+               } 
+               else {
+                  this->driver.write_pending = 1;
+                  this->driver.read_queue_head = this->driver.read_queue_tail;
+                  wake_up_interruptible(&this->driver.wait_read);
+                  wake_up_interruptible(&this->driver.wait_write);
+	       }
+
+               cec_listen_single(this, CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST);
+            }
+	    break;
+	 }
+
+      case CEC_IOCTL_GET_RAW_INFO_CMD:
+         {
+            int len;
+            cec_raw_info info;
+
+            info.VendorID = this->cec.vendor_id;
+            info.QueueSize = ARRAY_SIZE(this->driver.read_queue);
+            info.LogicalAddress = this->cec.rx_addr;
+            info.PhysicalAddress = this->cec.phy_addr;
+            info.LogicalAddressMask = this->cec.rx_addr_mask;
+
+	    len = min((size_t)this->cec.osd_name.length, sizeof(info.OsdName)-1);
+	    memcpy(info.OsdName, this->cec.osd_name.data, len);
+	    memset(&info.OsdName[len], '\0', sizeof(info.OsdName) - len);
+
+            BUG_ON(copy_to_user((void *)arg,&info,sizeof(info)) != 0);
+	    break;
+	 }
+
+      case CEC_IOCTL_SET_RX_ADDR_MASK_CMD:
+         {
+            cec_rx_mask rx_mask;
+            BUG_ON(copy_from_user(&rx_mask,(void *)arg,sizeof(rx_mask)) != 0);
+
+            if (this->driver.raw_mode) {
+               cec_listen_multi(this, rx_mask.SwitchOn, rx_mask.SwitchOff);
+            }
+            break;
+         }
+
+
       case CEC_VERBOSE_ON_CMD:
          {
             printk(KERN_INFO "verbose on\n");
@@ -1203,9 +1408,11 @@ static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long 
 
       case CEC_IOCTL_RX_ADDR_CMD:
          {
-            /* 	    BUG_ON(copy_from_user(&this->cec.rx_addr,(unsigned char*)arg,sizeof(unsigned char)) != 0); */
-            this->cec.rx_addr=arg;
-            TRY(tmdlHdmiCecSetLogicalAddress(this->cec.inst,this->cec.rx_addr));
+            unsigned char rx_addr;
+            BUG_ON(copy_from_user(&rx_addr,(void *)arg,sizeof(unsigned char)) != 0);
+            if (rx_addr <= CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST) {
+               cec_listen_single(this, rx_addr);
+            }
             break;
          }
 
@@ -1821,6 +2028,107 @@ static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long 
 }
 
 /*
+ *  ioctl driver :: read
+ */
+static ssize_t this_cdev_read(struct file *pFile, char *buffer, size_t length, loff_t *offset)
+{
+   cec_instance* this = pFile->private_data;
+   int bytes_returned = 0;
+
+   if (!this->driver.raw_mode || length < sizeof(cec_frame))
+      return -EINVAL; 
+
+   while (length - bytes_returned >= sizeof(cec_frame) &&
+          this->driver.read_queue_head != this->driver.read_queue_tail) {
+      memcpy(buffer + bytes_returned, 
+        &this->driver.read_queue[this->driver.read_queue_head], sizeof(cec_frame));
+
+      this->driver.read_queue_head = 
+        (this->driver.read_queue_head + 1) % ARRAY_SIZE(this->driver.read_queue);
+
+      bytes_returned += sizeof(cec_frame);
+   }
+
+//LOG(KERN_INFO,"%d bytes\n",bytes_returned);
+
+   return bytes_returned;
+}
+
+/*
+ *  ioctl driver :: write
+ */
+static ssize_t this_cdev_write(struct file *pFile, const char *buffer, size_t length, loff_t *offset)
+{
+   cec_instance* this = pFile->private_data;
+   int err = 0, bytes_written = 0;
+   const cec_frame *frame;
+
+   if (!this->driver.raw_mode || length < sizeof(cec_frame))
+      return -EINVAL; 
+
+   frame = (const cec_frame *)buffer;
+   if (frame->size < 3 || frame->size > sizeof(cec_frame))
+      return -EINVAL; 
+
+//printk(KERN_INFO "%s: %02x %02x%02x%02x%02x (%d)\n", __func__, 
+//  frame->addr,frame->data[0],frame->data[1],frame->data[2],frame->data[3], frame->size);
+
+   down(&this->driver.sem);
+
+   if (!this->driver.write_pending) {
+      if (this->cec.rx_addr == CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST ||
+          (frame->addr & 0xf0) != (CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST << 4)) {
+         TRY(tmdlHdmiCecSendMessage(this->cec.inst, (UInt8 *)&frame->addr, frame->size - 2));
+         this->driver.write_pending = 1;
+         bytes_written += length;
+//printk(KERN_INFO "%s: tmdlHdmiCecSendMessage O.K. (%d) \n", __func__, err);
+      }
+      else {
+         LOG(KERN_ERR,"initiator 'Broadcast' is not supported !\n");
+         goto TRY_DONE;
+      }
+   }
+
+//LOG(KERN_INFO,"%d bytes\n",bytes_written);
+
+   up(&this->driver.sem);
+   return bytes_written;
+
+ TRY_DONE:
+   up(&this->driver.sem);
+   return -EINVAL;
+}
+
+/*
+ *  ioctl driver :: poll
+ */
+static unsigned int this_cdev_poll(struct file *pFile, poll_table *poll_data)
+{
+   cec_instance* this = pFile->private_data;
+   unsigned int mask = 0;
+
+   down(&this->driver.sem);
+
+   if (this->driver.raw_mode) {
+      poll_wait(pFile, &this->driver.wait_read, poll_data);
+      poll_wait(pFile, &this->driver.wait_write, poll_data);
+
+      if (this->driver.read_queue_head != this->driver.read_queue_tail)
+   	 mask |= POLLIN | POLLRDNORM;	/* readable */
+
+      if (!this->driver.write_pending)
+   	 mask |= POLLOUT | POLLWRNORM;	/* writable */
+
+   } else {
+      mask |= POLLIN | POLLRDNORM | POLLOUT | POLLWRNORM;
+   }
+
+   up(&this->driver.sem);
+
+   return mask;
+}
+
+/*
  *  ioctl driver :: releasing
  */
 static int this_cdev_release(struct inode *pInode, struct file *pFile)
@@ -1830,15 +2138,25 @@ static int this_cdev_release(struct inode *pInode, struct file *pFile)
 
    LOG(KERN_INFO,"called\n");
 
-   if(minor >= MAX_MINOR) {
+   if (minor >= MAX_MINOR) {
       return -EINVAL;
    }
 
    BUG_ON(this->driver.minor!=iminor(pInode));
    down(&this->driver.sem);
 
-   this->driver.user_counter--;
-   if(this->driver.user_counter == 0) {
+   if (--this->driver.user_counter == 0) {
+      if (this->driver.raw_mode) {
+         this->driver.raw_mode = 0;
+         this->driver.write_pending = 1;
+         this->driver.read_queue_head = this->driver.read_queue_tail;
+
+         wake_up_interruptible(&this->driver.wait_write);
+         wake_up_interruptible(&this->driver.wait_read);
+
+         cec_listen_single(this, CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST);
+      }
+
       pFile->private_data = NULL;
    }
    else {
@@ -1868,17 +2186,8 @@ static int __devinit this_i2c_probe(struct i2c_client *client, const struct i2c_
       return -ENODEV;
    }
 
-   this->driver.i2c_client = kmalloc(sizeof(struct i2c_client), GFP_KERNEL);
-   if (!this->driver.i2c_client) {
-      return -ENOMEM;
-   }
-   memset(this->driver.i2c_client, 0, sizeof(struct i2c_client));
-
-   strncpy(this->driver.i2c_client->name, CEC_NAME, I2C_NAME_SIZE);
-   this->driver.i2c_client->addr = TDA99XCEC_I2C_SLAVEADDRESS;
-   this->driver.i2c_client->adapter = client->adapter;
-
-   i2c_set_clientdata(client, this->driver.i2c_client);
+   this->driver.i2c_client = client;
+   i2c_set_clientdata(client, this);
 
    tmdlHdmiCecGetSWVersion(&this->cec.sw_version);
    LOG(KERN_INFO,"HDMI CEC SW Version:%lu.%lu compatibility:%lu\n", \
@@ -1887,6 +2196,14 @@ static int __devinit this_i2c_probe(struct i2c_client *client, const struct i2c_
        this->cec.sw_version.compatibilityNr);
 
    /* I2C ok, then let's startup CEC */
+
+   /* initialize raw mode stuff */
+   this->driver.raw_mode = 0;
+   this->driver.write_pending = 1;
+   this->driver.read_queue_head = 0;
+   this->driver.read_queue_tail = 0;
+   init_waitqueue_head(&this->driver.wait_read);
+   init_waitqueue_head(&this->driver.wait_write);
 
    /* prepare event */
    this->driver.poll_done = true; /* currently idle */
@@ -1905,7 +2222,7 @@ static int __devinit this_i2c_probe(struct i2c_client *client, const struct i2c_
    /* FRO calibration */
    err=gpio_request(TDA_IRQ_CALIB,"tda19989 calibration");
    if (err < 0) {
-      printk(KERN_ERR "hdmicec:%s:cannot use GPIO 107\n",__func__);
+      printk(KERN_ERR "hdmicec:%s:Cannot use GPIO %d, err:%d\n",__func__,TDA_IRQ_CALIB,err);
       goto i2c_out;
    }
    /* turn GPIO into IRQ */
@@ -1919,9 +2236,8 @@ static int __devinit this_i2c_probe(struct i2c_client *client, const struct i2c_
    }
 #endif
 
-   err = hdmi_cec_init(this);
+   err = hdmi_cec_init(this, (const char *)client->dev.platform_data);
    if (err) goto i2c_out;
-   this->cec.rx_addr=CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST;
 
    if (get_hpd_status()) {
       cec_on(this);
@@ -1938,7 +2254,7 @@ static int __devinit this_i2c_probe(struct i2c_client *client, const struct i2c_
  i2c_out:
    LOG(KERN_INFO,"HDMICEC eject: this->driver.i2c_client removed\n");
    tmdlHdmiCecClose(this->cec.inst);
-   kfree(this->driver.i2c_client);
+
    this->driver.i2c_client = NULL;
 
    return err;
@@ -1961,7 +2277,7 @@ static int this_i2c_remove(struct i2c_client *client)
               __func__);
       return -ENODEV;
    }
-   kfree(this->driver.i2c_client);
+
    this->driver.i2c_client = NULL;
 
    return err;
@@ -1990,6 +2306,9 @@ static struct file_operations this_cdev_fops = {
  open:     this_cdev_open,
  release:  this_cdev_release,
  unlocked_ioctl: this_cdev_ioctl,
+ read:     this_cdev_read,
+ write:    this_cdev_write,
+ poll:     this_cdev_poll
 };
 
 /*
@@ -2051,8 +2370,8 @@ static int __init cec_init(void)
       this->param.major = MAJOR(dev);
    }
 
-   cdev_init(this_cdev, &this_cdev_fops);
-   this_cdev->owner = THIS_MODULE;
+   cdev_init(&our_cdev, &this_cdev_fops);
+   our_cdev.owner = THIS_MODULE;
 
    this->driver.class = class_create(THIS_MODULE, HDMICEC_NAME);
    if (IS_ERR(this->driver.class)) {
@@ -2063,7 +2382,7 @@ static int __init cec_init(void)
    this->driver.dev = device_create(this->driver.class, NULL, dev, NULL, HDMICEC_NAME);
 
    this->driver.devno = dev;
-   err = cdev_add(this_cdev, this->driver.devno, MAX_MINOR);
+   err = cdev_add(&our_cdev, this->driver.devno, MAX_MINOR);
    if (err){
       printk(KERN_INFO "unable to add device for %s, ipp_driver.devno=%d %s\n",HDMICEC_NAME,this->driver.devno,ERR_TO_STR(err));
       device_destroy(this->driver.class,this->driver.devno);
@@ -2080,7 +2399,6 @@ static int __init cec_init(void)
    /* 
       general device context
    */
-   //init_MUTEX(&this->driver.sem);
    sema_init(&this->driver.sem,1);
    this->driver.deinit_req=0;
    
@@ -2119,7 +2437,7 @@ static void __exit cec_exit(void)
 #endif
 
    /* unregister cdevice */
-   cdev_del(this_cdev);
+   cdev_del(&our_cdev);
    unregister_chrdev_region(this->driver.devno, MAX_MINOR);
 
    /* unregister device */
@@ -2128,7 +2446,6 @@ static void __exit cec_exit(void)
 
    /* unregister i2c */
    i2c_del_driver(&this_i2c_driver);
-
 }
 
 

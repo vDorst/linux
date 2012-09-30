@@ -41,7 +41,9 @@
 /* local */
 #include "tda998x_version.h"
 #include "tda998x.h"
+#include "tda998x_i2c.h"
 #include "tda998x_ioctl.h"
+#include "tda998x_exports.h"
 
 #ifdef I2C_DBG
 #include "tmbslHdmiTx_types.h"
@@ -68,10 +70,12 @@
  *  Global
  */
 
-tda_instance our_instance;
+static tda_instance our_instance;
 static struct cdev our_cdev, *this_cdev=&our_cdev;
 static int initialized = 0;
 static int saved_mode = -1;
+static cec_callback_t cec_callback = NULL;
+
 #ifdef ANDROID_DSS
 static struct omap_video_timings video_640x480at60Hz_panel_timings = {
    .x_res          = 640,
@@ -202,16 +206,15 @@ MODULE_PARM_DESC(major, "The major number of the device mapper");
 /* 
  *  Get main and unique I2C Client driver handle
  */
-struct i2c_client *GetThisI2cClient(void)
+struct i2c_client *txGetThisI2cClient(void)
 {
-   tda_instance *this=&our_instance;
-   return this->driver.i2c_client;
+   return our_instance.driver.i2c_client;
 }
 
 /*
  * error handling
  */
-char *hdmi_tx_err_string(int err)
+static char *hdmi_tx_err_string(int err)
 {
    switch (err & 0x0FFF)
       {
@@ -785,7 +788,8 @@ static void interrupt_polling(struct work_struct *dummy)
    TRY(tmdlHdmiTxHandleInterrupt(this->tda.instance));
 
    /* CEC part */
-   if (this->driver.cec_callback) this->driver.cec_callback(dummy);
+   if (this->driver.cec_callback)
+	this->driver.cec_callback(dummy);
 
    /* FIX : IT anti debounce */
    TRY(tmdlHdmiTxHandleInterrupt(this->tda.instance));
@@ -852,7 +856,10 @@ void register_cec_interrupt(cec_callback_t fct)
 {
    tda_instance *this=&our_instance;
 
-   this->driver.cec_callback = fct;
+   if (initialized) 
+	this->driver.cec_callback = fct;
+   else
+	cec_callback = fct;
 }
 EXPORT_SYMBOL(register_cec_interrupt);
 
@@ -860,6 +867,7 @@ void unregister_cec_interrupt(void)
 {
    tda_instance *this=&our_instance;
 
+   cec_callback = NULL;
    this->driver.cec_callback = NULL;
 }
 EXPORT_SYMBOL(unregister_cec_interrupt);
@@ -1899,7 +1907,7 @@ static int this_i2c_probe(struct i2c_client *client, const struct i2c_device_id 
 
 /* CuBox specific stuff */
 /* Addions to get EDID stuff out of the transmitter driver */
-char *tda19988_get_edid(int *num_of_blocks)
+const char *tda19988_get_edid(int *num_of_blocks)
 {
 	tda_instance* this = &our_instance;
 	if (!initialized) return NULL;
@@ -1915,14 +1923,13 @@ char *tda19988_get_edid(int *num_of_blocks)
 	return  this->tda.raw_edid;
 }
 
-struct res_to_vmode {
+static struct {
 	int x;
 	int y;
 	int interlaced;
 	int hz;
 	int vmode;
-};
-struct res_to_vmode resolution_to_video_format[] = {
+} resolution_to_video_format[] = {
 {640,	480,	0,	60,	TMDL_HDMITX_VFMT_01_640x480p_60Hz},
 {720,	480,	0,	60,	TMDL_HDMITX_VFMT_02_720x480p_60Hz},
 {720,	480,	0,	60,	TMDL_HDMITX_VFMT_03_720x480p_60Hz},
@@ -1994,40 +2001,33 @@ struct res_to_vmode resolution_to_video_format[] = {
 {1024,	768,	1,	87,	TMDL_HDMITX_VFMT_PC_1024x768i_87Hz},
 };
 
-int configure_tx_inout(int x, int y, int interlaced, int hz)
+int tda19988_configure_tx_inout(int x, int y, int interlaced, int hz)
 {
-	int i, mode = -1, refresh = 0;
 	tda_instance* this = &our_instance;
+	int i, d, mode = -1, rateDiff = 1000;
 
-	for (i = 0 ; i < sizeof(resolution_to_video_format); i++) {
+	for (i = 0; rateDiff && i < sizeof(resolution_to_video_format); i++) {
 		if (	(x == resolution_to_video_format[i].x) &&
 			(y == resolution_to_video_format[i].y) &&
-			(interlaced == resolution_to_video_format[i].interlaced) &&
-			(hz == resolution_to_video_format[i].hz)) {
-			mode = resolution_to_video_format[i].vmode;
-			printk (KERN_INFO "HDMI TX - FOUND exact resolution %d\n",mode);
-			break;
-		}
-	}
-
-	if (mode < 0) {
-		/* Try finding resolution but with closest refresh rate */
-		for (i = 0 ; i < sizeof(resolution_to_video_format); i++) {
-			if (	(x == resolution_to_video_format[i].x) &&
-				(y == resolution_to_video_format[i].y) &&
-				(interlaced == resolution_to_video_format[i].interlaced)) {
-				if ((resolution_to_video_format[i].hz - refresh) > 
-				    (resolution_to_video_format[i].hz - hz)) {
-					mode = resolution_to_video_format[i].vmode;
-					printk (KERN_INFO "HDMI TX - Found good candidate %d (requested %dhz, found %dhz)\n",mode,hz,resolution_to_video_format[i].hz);
-					refresh = resolution_to_video_format[i].hz;
-				}
+			(interlaced == resolution_to_video_format[i].interlaced) ) {
+			d = abs(resolution_to_video_format[i].hz - hz);
+			if (d < rateDiff) {
+				rateDiff = d;
+				mode = resolution_to_video_format[i].vmode;
 			}
 		}
 	}
 
-	if (mode < 0)
+	if (mode < 0) {
+		printk (KERN_ERR "HDMI TX - no matching resolution %dx%d%c %dHz\n",x,y,interlaced ? 'i':'p',hz);
 		return 0;
+	}
+
+	if (rateDiff == 0)
+		printk (KERN_INFO "HDMI TX - FOUND exact resolution %d\n",mode);
+	else
+		printk (KERN_INFO "HDMI TX - Found good candidate %d (requested %dhz, found %dhz)\n",
+			mode,hz,resolution_to_video_format[mode].hz);
 
 	if (initialized) {
 		this->tda.setio.video_in.format = mode;
@@ -2390,7 +2390,6 @@ static int __init tx_init(void)
    /* 
       general device context
    */
-//   init_MUTEX(&this->driver.sem);
    sema_init(&this->driver.sem,1);
    
    /*
@@ -2417,6 +2416,11 @@ static int __init tx_init(void)
 	this->tda.setio.video_in.format = saved_mode;
 	this->tda.setio.video_out.format = saved_mode;
 	show_video(this);
+   }
+
+   /* enable cec callback */
+   if (cec_callback) {
+	this->driver.cec_callback = cec_callback;
    }
 
    return 0;
@@ -2475,3 +2479,4 @@ module_exit(tx_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Andre Lepine <andre.lepine@nxp.com>");
 MODULE_DESCRIPTION(HDMITX_NAME " driver");
+

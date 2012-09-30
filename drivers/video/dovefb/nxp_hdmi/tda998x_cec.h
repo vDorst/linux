@@ -87,12 +87,21 @@ typedef struct {
       bool poll_done;
       int deinit_req;
       struct timer_list timer;
+
+      unsigned char raw_mode;
+      unsigned char write_pending;
+      wait_queue_head_t wait_read;
+      wait_queue_head_t wait_write;
+      int read_queue_head;
+      int read_queue_tail;
+      cec_frame read_queue[8];
    } driver;
    /* cec */
    struct {
       int inst;
-      unsigned char rx_addr;
       unsigned short phy_addr;
+      unsigned short rx_addr_mask;
+      unsigned char rx_addr;
       unsigned char initiator;
       cec_version version;
       cec_sw_version sw_version;
