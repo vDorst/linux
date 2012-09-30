@@ -141,7 +141,7 @@ tmErrorCode_t tmdlHdmiTxIWTaskStart(tmdlHdmiTxIWTaskHandle_t handle);
             - TMDL_ERR_DLHDMIRX_NO_RESOURCES: the resource is not available
 
 ******************************************************************************/
-static tmErrorCode_t tmdlHdmiTxIWWait(UInt16 duration);
+tmErrorCode_t tmdlHdmiTxIWWait(UInt16 duration);
 
 /*============================================================================*/
 

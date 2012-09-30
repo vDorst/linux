@@ -229,9 +229,7 @@ tmErrorCode_t tmdlHdmiCecHandleInterrupt
   unsigned char  I2c_ReadBuffer[19] ;   /* I2C Read data buffer */
   tmdlHdmiCecDriverConfigTable_t *pDis; /* Pointer to Device Instance Structure */
   tmdlHdmiCecUnitConfig_t        *pCecObject; /* Pointer to Cec Object */
-  tmdlHdmiCecFrameFormat_t  ReadFrame;
   tmdlHdmiCecSaveMessage_t  LastSendMessage;
-  int i;
 
 
   pDis = &gtmdlHdmiCecDriverConfigTable[instance];
@@ -250,52 +248,35 @@ tmErrorCode_t tmdlHdmiCecHandleInterrupt
 #endif
 
   errCode = getCecHwRegisters(pDis, E_REG_CDR0,I2c_ReadBuffer,19);
-  RETIF(errCode != TM_OK, errCode)
-     
-  /*Fill Frame structure with read data*/
+  RETIF((errCode != TM_OK || I2c_ReadBuffer[0] < 2), errCode)
 
-  /* Case of Receiving CECData.cnf*/
-  /*Inform Success or reason of failure of CEC message sending*/
-  if (I2c_ReadBuffer[1]== 0x01)
+  if (I2c_ReadBuffer[1] == 0x81)
   {
-    /* Get Infos of last message send */ 
-    getCecLastMessage(&LastSendMessage);
-	
-    if (LastSendMessage.MessageTypePolling)
-    {
-     ReadFrame.FrameByteCount = I2c_ReadBuffer[0];
-     ReadFrame.AddressByte = LastSendMessage.AddressByte;
-     ReadFrame.DataBytes[0]= I2c_ReadBuffer[2];
-    }
-    else
-    {
-     ReadFrame.FrameByteCount = I2c_ReadBuffer[0]+1;
-     ReadFrame.AddressByte = LastSendMessage.AddressByte;
-     ReadFrame.DataBytes[0]= I2c_ReadBuffer[2];
-     ReadFrame.DataBytes[1]= LastSendMessage.Opcode;
-    }
-    
-    pCecObject->MessageCallback(TMDL_HDMICEC_CALLBACK_STATUS
-                               , (Void *) &ReadFrame, ReadFrame.FrameByteCount);
+    /* Case of Receiving CECData.ind*/
+    /*Give receive data from CEC bus*/
+
+    pCecObject->MessageCallback(TMDL_HDMICEC_CALLBACK_MESSAGE_AVAILABLE,
+                                &I2c_ReadBuffer[2], I2c_ReadBuffer[0] - 2);
   }
-
-  /* Case of Receiving CECData.ind*/
-  /*Give receive data from CEC bus*/
-  if (I2c_ReadBuffer[1]== 0x81)
+  else if (I2c_ReadBuffer[1]== 0x01)
   {
-    ReadFrame.FrameByteCount = I2c_ReadBuffer[0];
-    ReadFrame.AddressByte = I2c_ReadBuffer[2];
-    for (i=0; i<15; i++)
-    {
-    ReadFrame.DataBytes[i] = I2c_ReadBuffer[i+3];
-    }
+    /* Case of Receiving CECData.cnf*/
+    /*Inform Success or reason of failure of CEC message sending*/
 
-    pCecObject->MessageCallback(TMDL_HDMICEC_CALLBACK_MESSAGE_AVAILABLE
-                               , (Void *) &ReadFrame, ReadFrame.FrameByteCount);
+    getCecLastMessage(&LastSendMessage);
+
+    /* Append saved OpCode */
+    if (!LastSendMessage.MessageTypePolling)
+      I2c_ReadBuffer[I2c_ReadBuffer[0]++] = LastSendMessage.Opcode;
+
+    /* Prepend saved AddressByte */
+    I2c_ReadBuffer[1] = LastSendMessage.AddressByte;
+
+    pCecObject->MessageCallback(TMDL_HDMICEC_CALLBACK_STATUS,
+                                &I2c_ReadBuffer[1], I2c_ReadBuffer[0] - 1);
   }
 
   return(TM_OK);
-
 }
 
 //==========================================================================
@@ -2443,13 +2424,16 @@ tmErrorCode_t tmdlHdmiCecSetTimerProgramTitle
   /* check if unit corresponding to instance is opened */
   RETIF(UnitTable[Instance].opened == False, TMDL_ERR_DLHDMICEC_RESOURCE_NOT_OWNED)
 
+  /* check if length is valid */
+  RETIF(ProgramTitleLength > (sizeof(I2c_Buffer) - 4), TMDL_ERR_DLHDMICEC_INCONSISTENT_PARAMS)
+
   /* check if instance state is correct */
   //RETIF(UnitTable[Instance].state != STATE_NOT_INITIALIZED, TMDL_ERR_DLHDMICEC_INVALID_STATE)
 
   pDis = &gtmdlHdmiCecDriverConfigTable[Instance];
 
   /* Set Timer Program Title */
-  MessLength = ProgramTitleLength+4;                         /* Calculate Message length*/
+  MessLength = ProgramTitleLength + 4;                       /* Calculate Message length*/
 
   I2c_Buffer[0] = (unsigned char)MessLength;
 
@@ -2462,12 +2446,12 @@ tmErrorCode_t tmdlHdmiCecSetTimerProgramTitle
 
   I2c_Buffer[3] = CEC_OPCODE_SET_TIMER_PROGRAM_TITLE ;      /* Set Timer Program Title*/
 
-  for(loci = 0; loci <= ProgramTitleLength ; loci++)
-    {
-        I2c_Buffer[(loci+4)] = pProgramTitleString[loci];     /* Fill Table with Program Title characters*/
-    }
+  /* Fill Table with Program Title characters*/
+  for (loci = 0; loci < ProgramTitleLength; loci++) {
+      I2c_Buffer[loci + 4] = pProgramTitleString[loci];       
+  }
 
-  errCode = setCecHwRegisters(pDis, E_REG_CDR0, I2c_Buffer,(MessLength)); /* CEC Data register */
+  errCode = setCecHwRegisters(pDis, E_REG_CDR0, I2c_Buffer, MessLength);
   RETIF(errCode != TM_OK, errCode)
 
   /* Save Datas of the CEC message send */
@@ -5694,6 +5678,9 @@ tmErrorCode_t tmdlHdmiCecVendorCommand
   /* check if unit corresponding to instance is opened */
   RETIF(UnitTable[Instance].opened == False, TMDL_ERR_DLHDMICEC_RESOURCE_NOT_OWNED)
 
+  /* check if length is valid */
+  RETIF(VendorSpecificDataLength > (sizeof(I2c_Buffer) - 4), TMDL_ERR_DLHDMICEC_INCONSISTENT_PARAMS)
+
   /* check if instance state is correct */
   //RETIF(UnitTable[Instance].state != STATE_NOT_INITIALIZED, TMDL_ERR_DLHDMICEC_INVALID_STATE)
 
@@ -5714,12 +5701,12 @@ tmErrorCode_t tmdlHdmiCecVendorCommand
 
   I2c_Buffer[3] = CEC_OPCODE_VENDOR_COMMAND ;       /* Vendor Command*/
 
-  for(loci = 0; loci <= VendorSpecificDataLength ; loci++)
-    {
-        I2c_Buffer[(loci+7)] = pVendorSpecificData[loci];    /* Fill Table with vendorSpecific Data characters*/
-    }
+  /* Fill Table with vendorSpecific Data characters*/
+  for (loci = 0; loci < VendorSpecificDataLength; loci++) {
+      I2c_Buffer[loci + 4] = pVendorSpecificData[loci];    
+  }
 
-  errCode = setCecHwRegisters(pDis, E_REG_CDR0, I2c_Buffer,MessLength); /* CEC Data register */
+  errCode = setCecHwRegisters(pDis, E_REG_CDR0, I2c_Buffer, MessLength);
   RETIF(errCode != TM_OK, errCode)
 
   /* Save Datas of the CEC message send */
@@ -5778,6 +5765,9 @@ tmErrorCode_t tmdlHdmiCecVendorCommandWithID
   /* check if unit corresponding to instance is opened */
   RETIF(UnitTable[Instance].opened == False, TMDL_ERR_DLHDMICEC_RESOURCE_NOT_OWNED)
 
+  /* check if length is valid */
+  RETIF(VendorSpecificDataLength > (sizeof(I2c_Buffer) - 7), TMDL_ERR_DLHDMICEC_INCONSISTENT_PARAMS)
+
   /* check if instance state is correct */
   //RETIF(UnitTable[Instance].state != STATE_NOT_INITIALIZED, TMDL_ERR_DLHDMICEC_INVALID_STATE)
 
@@ -5801,12 +5791,12 @@ tmErrorCode_t tmdlHdmiCecVendorCommandWithID
   I2c_Buffer[5] = (unsigned char)(VendorID >> 8);
   I2c_Buffer[6] = (unsigned char)VendorID;          /* LSByte of Vendor ID*/
 
-  for(loci = 0; loci <= VendorSpecificDataLength ; loci++)
-  {
-     I2c_Buffer[(loci+7)] = pVendorSpecificData[loci];    /* Fill Table with vendorSpecific Data characters*/
+  /* Fill Table with vendorSpecific Data characters*/
+  for (loci = 0; loci < VendorSpecificDataLength; loci++) {
+      I2c_Buffer[loci + 7] = pVendorSpecificData[loci];    
   }
 
-  errCode = setCecHwRegisters(pDis, E_REG_CDR0, I2c_Buffer,MessLength); /* CEC Data register */
+  errCode = setCecHwRegisters(pDis, E_REG_CDR0, I2c_Buffer, MessLength);
   RETIF(errCode != TM_OK, errCode)
 
   /* Save Datas of the CEC message send */
@@ -5862,6 +5852,9 @@ tmErrorCode_t tmdlHdmiCecVendorRemoteButtonDown
   /* check if unit corresponding to instance is opened */
   RETIF(UnitTable[Instance].opened == False, TMDL_ERR_DLHDMICEC_RESOURCE_NOT_OWNED)
 
+  /* check if length is valid */
+  RETIF(VendorSpecificRcCodeLength > (sizeof(I2c_Buffer) - 4), TMDL_ERR_DLHDMICEC_INCONSISTENT_PARAMS)
+
   /* check if instance state is correct */
   //RETIF(UnitTable[Instance].state != STATE_NOT_INITIALIZED, TMDL_ERR_DLHDMICEC_INVALID_STATE)
 
@@ -5880,14 +5873,14 @@ tmErrorCode_t tmdlHdmiCecVendorRemoteButtonDown
   I2c_Buffer[2] |= ReceiverLogicalAddress & 0x0F;                                   /* Receiver logical Address*/
 
   I2c_Buffer[3] = CEC_OPCODE_VENDOR_REMOTE_BUTTON_DOWN ;    /* Vendor Remote Button Down Opcode*/
-  /*Vendor Specific RC code Parameter*/
-  for(loci = 0; loci <= VendorSpecificRcCodeLength ; loci++)
-    {
-        I2c_Buffer[(loci+4)] = pVendorSpecificRcCode[loci];   /* Fill Table with Vendor Specific RC Code data*/
-    }
+
+  /* Fill Table with Vendor Specific RC Code data*/
+  for (loci = 0; loci < VendorSpecificRcCodeLength; loci++) {
+      I2c_Buffer[loci + 4] = pVendorSpecificRcCode[loci];     
+  }
+
   /*Send message Via I2C*/
-  
-  errCode = setCecHwRegisters(pDis, E_REG_CDR0, I2c_Buffer,MessLength);
+  errCode = setCecHwRegisters(pDis, E_REG_CDR0, I2c_Buffer, MessLength);
   RETIF(errCode != TM_OK, errCode)
 
   /* Save Datas of the CEC message send */
@@ -6010,6 +6003,9 @@ tmErrorCode_t tmdlHdmiCecSetOsdString
   /* check if unit corresponding to instance is opened */
   RETIF(UnitTable[Instance].opened == False, TMDL_ERR_DLHDMICEC_RESOURCE_NOT_OWNED)
 
+  /* check if length is valid */
+  RETIF(OsdStringLength > (sizeof(I2c_Buffer) - 5), TMDL_ERR_DLHDMICEC_INCONSISTENT_PARAMS)
+
   /* check if instance state is correct */
   //RETIF(UnitTable[Instance].state != STATE_NOT_INITIALIZED, TMDL_ERR_DLHDMICEC_INVALID_STATE)
 
@@ -6018,9 +6014,9 @@ tmErrorCode_t tmdlHdmiCecSetOsdString
   //======To do : make a prepare message function with parameter
   /* Set OSD String command */
 
-  MessLength = OsdStringLength+5;                   /* Calculate Message length*/
+  MessLength = OsdStringLength + 5;                 /* Calculate Message length*/
 
-  I2c_Buffer[0] = (unsigned char)MessLength;
+  I2c_Buffer[0] = MessLength;
 
   I2c_Buffer[1] = 0x00;     /* Request CEC data */
 
@@ -6031,12 +6027,13 @@ tmErrorCode_t tmdlHdmiCecSetOsdString
 
   I2c_Buffer[3] = CEC_OPCODE_SET_OSD_STRING ;       /* Set Osd String*/
   I2c_Buffer[4] = DisplayControl;                   /*Display Control*/
-   for(loci = 0; loci <= OsdStringLength ; loci++)
-    {
-        I2c_Buffer[(loci+5)] = pOsdString[loci];         /* Fill Table with OSD Name characters*/
-    }
+
+  /* Fill Table with OSD Name characters*/
+  for (loci = 0; loci < OsdStringLength; loci++) {
+      I2c_Buffer[loci + 5] = pOsdString[loci];        
+  }
   
-  errCode = setCecHwRegisters(pDis, E_REG_CDR0, I2c_Buffer,(MessLength)); /* CEC Data register */
+  errCode = setCecHwRegisters(pDis, E_REG_CDR0, I2c_Buffer, MessLength);
   RETIF(errCode != TM_OK, errCode)
 
   /* Save Datas of the CEC message send */
@@ -6156,6 +6153,9 @@ tmErrorCode_t tmdlHdmiCecSetOsdName
   /* check if unit corresponding to instance is opened */
   RETIF(UnitTable[Instance].opened == False, TMDL_ERR_DLHDMICEC_RESOURCE_NOT_OWNED)
 
+  /* check if length is valid */
+  RETIF(OsdNameLength > (sizeof(I2c_Buffer) - 4), TMDL_ERR_DLHDMICEC_INCONSISTENT_PARAMS)
+
   /* check if instance state is correct */
   //RETIF(UnitTable[Instance].state != STATE_NOT_INITIALIZED, TMDL_ERR_DLHDMICEC_INVALID_STATE)
 
@@ -6164,9 +6164,9 @@ tmErrorCode_t tmdlHdmiCecSetOsdName
   //======To do : make a prepare message function with parameter
   /* Set OSD Name command */
 
-  MessLength = OsdNameLength+4;                         /* Calculate Message length*/
+  MessLength = OsdNameLength + 4;                       /* Calculate Message length*/
 
-  I2c_Buffer[0] = (unsigned char)MessLength;
+  I2c_Buffer[0] = MessLength;
   
   I2c_Buffer[1] = 0x00;     /* Request CEC data */
 
@@ -6176,12 +6176,13 @@ tmErrorCode_t tmdlHdmiCecSetOsdName
   I2c_Buffer[2] |= ReceiverLogicalAddress & 0x0F;                                   /* Receiver logical Address*/
 
   I2c_Buffer[3] = CEC_OPCODE_SET_OSD_NAME ;     /* Set Osd Name*/
-    for(loci = 0; loci <= OsdNameLength ; loci++)
-    {
-        I2c_Buffer[(loci+4)] = pOsdName[loci];       /* Fill Table with OSD Name characters*/
-    }
 
-  errCode = setCecHwRegisters(pDis, E_REG_CDR0, I2c_Buffer,(MessLength)); /* CEC Data register */
+  /* Fill Table with OSD Name characters*/
+  for (loci = 0; loci < OsdNameLength; loci++) {
+      I2c_Buffer[loci + 4] = pOsdName[loci];      
+  }
+
+  errCode = setCecHwRegisters(pDis, E_REG_CDR0, I2c_Buffer, MessLength);
   RETIF(errCode != TM_OK, errCode)
 
   /* Save Datas of the CEC message send */
@@ -7423,13 +7424,12 @@ tmErrorCode_t tmdlHdmiCecSendMessage(
    UInt16       lenData
 )
 {
-
   tmErrorCode_t  errCode = TM_OK;
 
 #ifdef TMFL_TDA9989
 
   unsigned char  I2c_Buffer[19] ;        /* I2C data buffer */
-  unsigned char  Loci;                   /* Local increment variable*/
+  unsigned char  loci;                   /* Local increment variable*/
   unsigned char  MessLength;             /* Local Message length*/
   
   tmdlHdmiCecDriverConfigTable_t *pDis; /* Pointer to Device Instance Structure */
@@ -7440,40 +7440,42 @@ tmErrorCode_t tmdlHdmiCecSendMessage(
   /* check if unit corresponding to instance is opened */
   RETIF(UnitTable[instance].opened == False, TMDL_ERR_DLHDMICEC_RESOURCE_NOT_OWNED)
   
-  /* check if CEC message is not too long */
-  RETIF((lenData > 16), TMDL_ERR_DLHDMICEC_INCONSISTENT_PARAMS)
+  /* check if CEC message length is valid */
+  RETIF((lenData == 0 || lenData > (sizeof(I2c_Buffer) - 2)), TMDL_ERR_DLHDMICEC_INCONSISTENT_PARAMS)
 
   pDis = &gtmdlHdmiCecDriverConfigTable[instance];
 
   /* Calculate Internal Message length*/
-  MessLength = (lenData-1)+3; /* real data is less ReceiverLogical address */
+  MessLength = (unsigned char)(lenData + 2);
   
   I2c_Buffer[0] = MessLength;  /* Param number */
+  I2c_Buffer[1] = 0x00;        /* Request CEC data */
+  I2c_Buffer[3] = 0x00;        /* Initialize (for the case it's a poll) */
 
-  I2c_Buffer[1] = 0x00;     /* Request CEC data */
-
-  /*Build Initiator and Reciever Logical Address Byte*/
-  I2c_Buffer[2] = (unsigned char)(UnitTable[instance].DeviceLogicalAddress) & 0x0F; /*Initiator logical Address*/
-  I2c_Buffer[2] = I2c_Buffer[2] << 4;
-  I2c_Buffer[2] |= pData[0] & 0x0F;
-
-  for(Loci = 0; Loci <= lenData ; Loci++)
-  {
-     I2c_Buffer[(Loci+3)] = pData[(Loci+1)];     /* Fill Table with Data from middleware, Data begin at position 1*/
+  /* Copy data */
+  for (loci = 0; loci < lenData; loci++) {
+      I2c_Buffer[loci + 2] = pData[loci]; 
   }
-  
-  errCode = setCecHwRegisters(pDis, E_REG_CDR0, I2c_Buffer,MessLength); /* CEC Data register */
+
+  /* replace initiator logical address *ONLY* in case of 'Broadcast' */
+  /* for libCEC support, we need to be able to use any valid initiator address */
+  if ((I2c_Buffer[2] & 0xf0) == (CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST << 4)) {
+      I2c_Buffer[2] = (I2c_Buffer[2] & 0x0f) |
+          ((unsigned char)(UnitTable[instance].DeviceLogicalAddress) << 4);
+  }
+
+  /* Write CEC Data registers */
+  errCode = setCecHwRegisters(pDis, E_REG_CDR0, I2c_Buffer, MessLength); 
   RETIF(errCode != TM_OK, errCode)
   
-  /* Save Datas of the CEC message send */
-  gtmdlHdmiCecDriverSaveMessage.AddressByte = pData[2];
-  gtmdlHdmiCecDriverSaveMessage.MessageTypePolling = 0;
-  gtmdlHdmiCecDriverSaveMessage.Opcode = pData[3];
+  /* Save Datas of the CEC message sent */
+  gtmdlHdmiCecDriverSaveMessage.AddressByte = I2c_Buffer[2];
+  gtmdlHdmiCecDriverSaveMessage.MessageTypePolling = (MessLength == 3);
+  gtmdlHdmiCecDriverSaveMessage.Opcode = I2c_Buffer[3];
 
 #endif  /*  TMFL_TDA9989 */
 
   return errCode;
-
 }
 
 

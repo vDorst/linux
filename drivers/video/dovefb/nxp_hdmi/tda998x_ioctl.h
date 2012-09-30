@@ -772,14 +772,27 @@ typedef struct {
   } cec_send_msg;
 */
 
-typedef struct
-{
-   unsigned char count;
+typedef struct {
+   unsigned char size;
    unsigned char service;
    unsigned char addr;
    unsigned char data[15];
 } cec_frame;
 /* typedef tmdlHdmiCecFrameFormat_t cec_frame; */
+
+typedef struct {
+   unsigned long  VendorID;
+   unsigned char  QueueSize;
+   unsigned char  LogicalAddress;
+   unsigned short PhysicalAddress;
+   unsigned short LogicalAddressMask;
+   char           OsdName[16];
+} cec_raw_info;
+
+typedef struct {
+   unsigned short SwitchOn;
+   unsigned short SwitchOff;
+} cec_rx_mask;
 
 typedef tmSWVersion_t cec_sw_version;
 typedef tmPowerState_t cec_power;
@@ -810,6 +823,9 @@ typedef tmdlHdmiCECDeviceType_t cec_device_type;
 
 /* service */
 enum {
+   CEC_RX_PKT  = 0x01,
+   CEC_ACK_PKT = 0x02,
+
    CEC_WAITING = 0x80,
    CEC_RELEASE,
    CEC_RX_DONE,
@@ -912,7 +928,13 @@ enum {
    CEC_IOCTL_ENABLE_CALIBRATION_CMD,
    CEC_IOCTL_DISABLE_CALIBRATION_CMD,
    CEC_IOCTL_SEND_MSG_CMD,
-   CEC_IOCTL_SET_REGISTER_CMD
+   CEC_IOCTL_SET_REGISTER_CMD,
+
+   /* libCEC support */
+   CEC_IOCTL_GET_RAW_MODE_CMD = 200,
+   CEC_IOCTL_SET_RAW_MODE_CMD,
+   CEC_IOCTL_GET_RAW_INFO_CMD,
+   CEC_IOCTL_SET_RX_ADDR_MASK_CMD
 };
 
 
@@ -1010,7 +1032,15 @@ enum {
 #define CEC_IOCTL_DISABLE_EVENT      _IOWR(CEC_IOCTL_BASE,CEC_IOCTL_DISABLE_EVENT_CMD,cec_event)
 #define CEC_IOCTL_ENABLE_CALIBRATION      _IOWR(CEC_IOCTL_BASE,CEC_IOCTL_ENABLE_CALIBRATION_CMD,cec_clock)
 #define CEC_IOCTL_DISABLE_CALIBRATION      _IO(CEC_IOCTL_BASE,CEC_IOCTL_DISABLE_CALIBRATION_CMD)
-//#define CEC_IOCTL_SEND_MSG      _IOWR(CEC_IOCTL_BASE,CEC_IOCTL_SEND_MSG_CMD,cec_send_msg)
+#define CEC_IOCTL_SEND_MSG      _IOR(CEC_IOCTL_BASE,CEC_IOCTL_SEND_MSG_CMD,cec_frame)
+
+/* libCEC support */
+#define	CEC_IOCTL_GET_RAW_MODE      _IOR(CEC_IOCTL_BASE,CEC_IOCTL_GET_RAW_MODE_CMD,unsigned char)
+#define	CEC_IOCTL_SET_RAW_MODE      _IOWR(CEC_IOCTL_BASE,CEC_IOCTL_SET_RAW_MODE_CMD,unsigned char)
+#define	CEC_IOCTL_GET_RAW_INFO      _IOR(CEC_IOCTL_BASE,CEC_IOCTL_GET_RAW_INFO_CMD,cec_raw_info)
+#define	CEC_IOCTL_SET_RX_ADDR_MASK  _IOWR(CEC_IOCTL_BASE,CEC_IOCTL_SET_RX_ADDR_MASK_CMD,cec_rx_mask)
+
+
 
 /* --- Full list --- */
 
