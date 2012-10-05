@@ -375,7 +375,6 @@ struct xgmac_priv {
 	unsigned int tx_tail;
 
 	void __iomem *base;
-	struct sk_buff_head rx_recycle;
 	unsigned int dma_buf_sz;
 	dma_addr_t dma_rx_phy;
 	dma_addr_t dma_tx_phy;
@@ -671,19 +670,16 @@ static void xgmac_rx_refill(struct xgmac_priv *priv)
 
 		p = priv->dma_rx + entry;
 
-		if (priv->rx_skbuff[entry] != NULL)
-			continue;
-
-		skb = __skb_dequeue(&priv->rx_recycle);
-		if (skb == NULL)
+		if (priv->rx_skbuff[entry] == NULL) {
 			skb = netdev_alloc_skb(priv->dev, priv->dma_buf_sz);
-		if (unlikely(skb == NULL))
-			break;
+			if (unlikely(skb == NULL))
+				break;
 
-		priv->rx_skbuff[entry] = skb;
-		paddr = dma_map_single(priv->device, skb->data,
-					 priv->dma_buf_sz, DMA_FROM_DEVICE);
-		desc_set_buf_addr(p, paddr, priv->dma_buf_sz);
+			priv->rx_skbuff[entry] = skb;
+			paddr = dma_map_single(priv->device, skb->data,
+					       priv->dma_buf_sz, DMA_FROM_DEVICE);
+			desc_set_buf_addr(p, paddr, priv->dma_buf_sz);
+		}
 
 		netdev_dbg(priv->dev, "rx ring: head %d, tail %d\n",
 			priv->rx_head, priv->rx_tail);
@@ -890,17 +886,7 @@ static void xgmac_tx_complete(struct xgmac_priv *priv)
 				       desc_get_buf_len(p), DMA_TO_DEVICE);
 		}
 
-		/*
-		 * If there's room in the queue (limit it to size)
-		 * we add this skb back into the pool,
-		 * if it's the right size.
-		 */
-		if ((skb_queue_len(&priv->rx_recycle) <
-			DMA_RX_RING_SZ) &&
-			skb_recycle_check(skb, priv->dma_buf_sz))
-			__skb_queue_head(&priv->rx_recycle, skb);
-		else
-			dev_kfree_skb(skb);
+		dev_kfree_skb(skb);
 	}
 
 	if (dma_ring_space(priv->tx_head, priv->tx_tail, DMA_TX_RING_SZ) >
@@ -1017,7 +1003,6 @@ static int xgmac_open(struct net_device *dev)
 			dev->dev_addr);
 	}
 
-	skb_queue_head_init(&priv->rx_recycle);
 	memset(&priv->xstats, 0, sizeof(struct xgmac_extra_stats));
 
 	/* Initialize the XGMAC and descriptors */
@@ -1054,7 +1039,6 @@ static int xgmac_stop(struct net_device *dev)
 		napi_disable(&priv->napi);
 
 	writel(0, priv->base + XGMAC_DMA_INTR_ENA);
-	skb_queue_purge(&priv->rx_recycle);
 
 	/* Disable the MAC core */
 	xgmac_mac_disable(priv->base);
