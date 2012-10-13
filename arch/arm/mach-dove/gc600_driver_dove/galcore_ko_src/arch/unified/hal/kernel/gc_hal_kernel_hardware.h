@@ -10,7 +10,7 @@
 *    This program is distributed in the hope that it will be useful,
 *    but WITHOUT ANY WARRANTY; without even the implied warranty of
 *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public Lisence for more details.
+*    GNU General Public License for more details.
 *
 *    You should have received a copy of the GNU General Public License
 *    along with this program; if not write to the Free Software
@@ -32,38 +32,42 @@ extern "C" {
 struct _gckHARDWARE
 {
     /* Object. */
-    gcsOBJECT	    	    	object;
+    gcsOBJECT                   object;
 
     /* Pointer to gctKERNEL object. */
-    gckKERNEL	    	    	kernel;
+    gckKERNEL                   kernel;
 
     /* Pointer to gctOS object. */
-    gckOS   	    	    	os;
+    gckOS                       os;
 
     /* Chip characteristics. */
-    gceCHIPMODEL    	    	chipModel;
-    gctUINT32	    	    	chipRevision;
-    gctUINT32	    	    	chipFeatures;
-	gctUINT32	    	    	chipMinorFeatures0;
-	gctUINT32	    	    	chipMinorFeatures1;
-    gctBOOL 	    	    	allowFastClear;
-	gctBOOL						allowCompression;
-	gctUINT32					powerBaseAddress;
-	gctBOOL						extraEventStates;
+    gceCHIPMODEL                chipModel;
+    gctUINT32                   chipRevision;
+    gctUINT32                   chipFeatures;
+    gctUINT32                   chipMinorFeatures0;
+    gctUINT32                   chipMinorFeatures1;
+    gctBOOL                     allowFastClear;
+    gctBOOL                     allowCompression;
+    gctUINT32                   powerBaseAddress;
+    gctBOOL                     extraEventStates;
 
-	gctUINT32					streamCount;
-	gctUINT32					registerMax;
-	gctUINT32					threadCount;
-	gctUINT32					shaderCoreCount;
-	gctUINT32					vertexCacheSize;
-	gctUINT32					vertexOutputBufferSize;
+    gctUINT32                   streamCount;
+    gctUINT32                   registerMax;
+    gctUINT32                   threadCount;
+    gctUINT32                   shaderCoreCount;
+    gctUINT32                   vertexCacheSize;
+    gctUINT32                   vertexOutputBufferSize;
 
-	/* Big endian */
-	gctBOOL						bigEndian;
+    /* Big endian */
+    gctBOOL                     bigEndian;
 
     /* Chip status */
-    gceCHIPPOWERSTATE			chipPowerState;
+    gctPOINTER                  powerMutex;
+    gctUINT32                   powerProcess;
+    gctUINT32                   powerThread;
+    gceCHIPPOWERSTATE           chipPowerState;
     gctUINT32                   lastWaitLink;
+    gckRecursiveMutex           recMutexPower;
 
     /* force GC to hang once */
 	gctBOOL						hang;

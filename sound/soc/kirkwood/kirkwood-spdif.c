@@ -9,6 +9,8 @@
  *  option) any later version.
  */
 
+#undef KWSPDIFDEBUG
+
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/string.h>
@@ -22,6 +24,13 @@
 #include <plat/audio.h>
 #include <asm/mach-types.h>
 
+#ifdef KWSPDIFDEBUG
+#  define DPRINTK(fmt, args...) printk(KERN_INFO "%s: " fmt, __func__ , ## args)
+#else
+#  define DPRINTK(fmt, args...)
+#endif
+
+
 struct kirkwood_spdif_data {
 	struct platform_device *spdif_dit;
 };
@@ -31,15 +40,14 @@ static int kirkwood_spdif_hw_params(struct snd_pcm_substream *substream,
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
-	unsigned int freq;
 
-	printk(">>> kirkwood_spdif_hw_params : substream = %p, params = %p\n", 
-	       substream, params);
-	printk(">>> kirkwood_spdif_hw_params : rate = %d\n", 
-	       params_rate(params));
-	printk(">>> kirkwood_spdif_hw_params : codec_dai = %s\n", 
-	       codec_dai->name);
+#if 1
+	DPRINTK("substream = %p, params = %p\n", substream, params);
+	DPRINTK("rate = %d\n", params_rate(params));
+	DPRINTK("codec_dai = %s\n", codec_dai->name);
 	return 0;
+#else
+	unsigned int freq;
 
 	switch (params_rate(params)) {
 	default:
@@ -55,6 +63,7 @@ static int kirkwood_spdif_hw_params(struct snd_pcm_substream *substream,
 	}
 	
 	return snd_soc_dai_set_sysclk(codec_dai, 0, freq, SND_SOC_CLOCK_IN);
+#endif
 }
 
 static struct snd_soc_ops kirkwood_spdif_ops = {
@@ -92,7 +101,7 @@ static int __devinit kirkwood_spdif_probe(struct platform_device *pdev)
 	struct platform_device *spdif_dit;
 	int ret;
 
-	printk(">>> kirkwood_spdif_probe : pdev = %p, pdev->id = %d", pdev, pdev->id);
+	DPRINTK("pdev = %p, pdev->id = %d", pdev, pdev->id);
 
 	if (pdev->id < 0 || pdev->id > 1)
 		return -EINVAL;

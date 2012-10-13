@@ -741,27 +741,6 @@ static struct clk_init_data clk_axi = {
 	.num_parents = 1,
 };
 
-static struct clk_init_data clk_ssp = {
-	.name	= "ssp_clk",
-	.ops	= &ssp_clk_ops,
-	.parent_names = nb_pll,
-	.num_parents = 1,
-};
-
-static struct clk_init_data clk_lcd = {
-	.name	= "lcd_clk",
-	.ops	= &lcd_clk_ops,
-	.parent_names = nb_pll,
-	.num_parents = 1,
-};
-
-static struct clk_init_data accrt_clk_lcd = {
-	.name	= "accurate_lcd_clk",
-	.ops	= &accrt_lcd_clk_ops,
-	.parent_names = nb_pll,
-	.num_parents = 1,
-};
-
 static struct clk_hw vmeta_hw_clk = {
 	.init = &clk_vmeta,
 };

@@ -10,7 +10,7 @@
 *    This program is distributed in the hope that it will be useful,
 *    but WITHOUT ANY WARRANTY; without even the implied warranty of
 *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public Lisence for more details.
+*    GNU General Public License for more details.
 *
 *    You should have received a copy of the GNU General Public License
 *    along with this program; if not write to the Free Software
@@ -97,7 +97,7 @@ typedef enum _gceHAL_COMMAND_CODES
 
     gcvHAL_GET_BASE_ADDRESS,
 
-    gcvHAL_SET_IDLE,
+    gcvHAL_SET_IDLE, /* reserved */
 
     /* Queries. */
     gcvHAL_QUERY_KERNEL_SETTINGS,
@@ -113,6 +113,9 @@ typedef enum _gceHAL_COMMAND_CODES
 
     /* Cache stuff. */
     gcvHAL_CACHE,
+
+    gcvHAL_GC_OFF,
+    gcvHAL_GC_ON
 }
 gceHAL_COMMAND_CODES;
 
@@ -426,6 +429,9 @@ typedef struct _gcsHAL_INTERFACE
             /* Reset mode. */
             IN gctBOOL                  manualReset;
 
+            /* Signal ID. */
+            IN gceSIGNAL_TYPE           signalType;
+
             /* Wait timedout. */
             IN gctUINT32                wait;
 
@@ -449,7 +455,7 @@ typedef struct _gcsHAL_INTERFACE
 
 #if defined(__QNXNTO__)
             /* Client pulse side-channel connection ID. Set by client in gcoOS_CreateSignal. */
-            IN gctINT32     			coid;
+            IN gctINT32                 coid;
 
             /* Set by server. */
             IN gctINT32                 rcvid;
@@ -459,11 +465,11 @@ typedef struct _gcsHAL_INTERFACE
         }
         Signal;
 
-		/* gcvHAL_WRITE_DATA. */
-		struct _gcsHAL_WRITE_DATA
-		{
-			/* Address to write data to. */
-			IN gctUINT32				address;
+        /* gcvHAL_WRITE_DATA. */
+        struct _gcsHAL_WRITE_DATA
+        {
+            /* Address to write data to. */
+            IN gctUINT32                address;
 
 			IN  gctPOINTER			kernelAddress;
             /* Data to write. */

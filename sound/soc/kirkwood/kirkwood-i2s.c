@@ -10,6 +10,8 @@
  *  option) any later version.
  */
 
+#undef KWI2SDEBUG
+
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -25,6 +27,12 @@
 #include <sound/soc.h>
 #include <plat/audio.h>
 #include "kirkwood.h"
+
+#ifdef KWI2SDEBUG
+#  define DPRINTK(fmt, args...) printk(KERN_INFO "%s: " fmt, __func__ , ## args)
+#else
+#  define DPRINTK(fmt, args...)
+#endif
 
 #define DRV_NAME	"kirkwood-i2s"
 
@@ -42,36 +50,44 @@
 
 static inline void kirkwood_set_dco(void __iomem *io, unsigned long rate);
 
-static void kirkwood_i2s_dump_spdif(struct kirkwood_dma_data *priv)
+
+#ifdef KWI2SDEBUG
+static void kirkwood_i2s_dump_spdif(const char *function, struct kirkwood_dma_data *priv)
 {
 	u32 reg;
 
 	reg = readl(priv->io + KIRKWOOD_SPDIF_PLAYCTL);
-	printk(">>> SPDIF Playback Ctrl = %08x\n", reg);
-	printk(">>>  - Non-PCM             = %d\n", (reg & KIRKWOOD_SPDIF_NON_PCM) ? 1 : 0);
-	printk(">>>  - Register Validity   = %d\n", (reg & KIRKWOOD_SPDIF_REG_VALIDITY) ? 1 : 0);
-	printk(">>>  - Force Parity Error  = %d\n", (reg & KIRKWOOD_SPDIF_FORCE_PARERR) ? 1 : 0);
-	printk(">>>  - Mem User Enable     = %d\n", (reg & KIRKWOOD_SPDIF_MEM_USER_EN) ? 1 : 0);
-	printk(">>>  - Mem Validity Enable = %d\n", (reg & KIRKWOOD_SPDIF_MEM_VALIDITY_EN) ? 1 : 0);
-	printk(">>>  - Block Start Mode    = %d\n", (reg & KIRKWOOD_SPDIF_BLOCK_START_MODE) ? 1 : 0);
+	printk(KERN_INFO "%s:\n", function);
+	printk("  >>> SPDIF Playback Ctrl = %08x\n", reg);
+	printk("  >>>  - Non-PCM             = %d\n", (reg & KIRKWOOD_SPDIF_NON_PCM) ? 1 : 0);
+	printk("  >>>  - Register Validity   = %d\n", (reg & KIRKWOOD_SPDIF_REG_VALIDITY) ? 1 : 0);
+	printk("  >>>  - Force Parity Error  = %d\n", (reg & KIRKWOOD_SPDIF_FORCE_PARERR) ? 1 : 0);
+	printk("  >>>  - Mem User Enable     = %d\n", (reg & KIRKWOOD_SPDIF_MEM_USER_EN) ? 1 : 0);
+	printk("  >>>  - Mem Validity Enable = %d\n", (reg & KIRKWOOD_SPDIF_MEM_VALIDITY_EN) ? 1 : 0);
+	printk("  >>>  - Block Start Mode    = %d\n", (reg & KIRKWOOD_SPDIF_BLOCK_START_MODE) ? 1 : 0);
 }
 
-static void kirkwood_i2s_dump_iec958(struct snd_aes_iec958 *iec)
+static void kirkwood_i2s_dump_iec958(const char *function, struct snd_aes_iec958 *iec)
 {
 	int i;
 
-	printk(">>> status   = ");
+	printk(KERN_INFO "%s:\n", function);
+	printk("  >>> status   = ");
 	for(i=0; i < 4; i++)
+
+
 		printk("%02x ", iec->status[i]);
 	printk("\n");
-	printk(">>> con/pro = %s, non-audio = %d\n",
+	printk("  >>> con/pro = %s, non-audio = %d\n",
 	       (iec->status[0] & IEC958_AES0_PROFESSIONAL) ? "pro" : "con",
 	       (iec->status[0] & IEC958_AES0_NONAUDIO) ? 1 : 0);
 }
+#endif
+
 
 int kirkwood_i2s_control_iec958_dflt_info(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_info *uinfo)
 {
-	printk(">>> %s\n", __FUNCTION__);
+	DPRINTK("\n");
 
 	uinfo->type = SNDRV_CTL_ELEM_TYPE_IEC958;
 	uinfo->count = 1;
@@ -86,8 +102,10 @@ int kirkwood_i2s_control_iec958_dflt_get(struct snd_kcontrol *kcontrol,
 	u32 reg;
 	int n;
 
-	printk(">>> %s :: kcontrol = %p, kcontrol->private_data = %p, ucontrol = %p\n", __FUNCTION__, kcontrol, kcontrol->private_data, ucontrol);
-	kirkwood_i2s_dump_iec958(&ucontrol->value.iec958);
+#ifdef KWI2SDEBUG
+	DPRINTK("kcontrol = %p, kcontrol->private_data = %p, ucontrol = %p\n", kcontrol, kcontrol->private_data, ucontrol);
+	kirkwood_i2s_dump_iec958(__func__, &ucontrol->value.iec958);
+#endif
 
 #if 0
 	reg = readl(priv->io+KIRKWOOD_SPDIF_PLAYCTL);
@@ -116,8 +134,10 @@ int kirkwood_i2s_control_iec958_dflt_put(struct snd_kcontrol *kcontrol,
 	u32 reg, nreg;
 	int n;
 
-	printk(">>> %s :: kcontrol = %p, ucontrol = %p\n", __FUNCTION__, kcontrol, ucontrol);
-	kirkwood_i2s_dump_iec958(&ucontrol->value.iec958);
+#ifdef KWI2SDEBUG
+	DPRINTK("kcontrol = %p, ucontrol = %p\n", kcontrol, ucontrol);
+	kirkwood_i2s_dump_iec958(__func__, &ucontrol->value.iec958);
+#endif
 
 	reg  = readl(priv->io+KIRKWOOD_SPDIF_PLAYCTL);
 	nreg = reg & ~(KIRKWOOD_SPDIF_NON_PCM | KIRKWOOD_SPDIF_REG_VALIDITY);
@@ -219,15 +239,13 @@ static inline void kirkwood_set_rate(struct kirkwood_dma_data* priv,
 {
 	if (rate == 44100 || rate == 48000 || rate == 96000) {
 		/* use internal dco for supported rates */
-		printk (">>> %s :: dco set rate = %lu\n", 
-			__FUNCTION__, rate);
+		DPRINTK("dco set rate = %lu\n", rate);
 		kirkwood_set_dco(priv->io, rate);
 		writel(KIRKWOOD_MCLK_SOURCE_DCO, 
 		       priv->io+KIRKWOOD_CLOCKS_CTRL);
 	} else if (!IS_ERR(priv->extclk)) {
 		/* use optional external clk for other rates */
-		printk (">>> %s :: extclk set rate = %lu -> %lu\n", 
-			__FUNCTION__, rate, 256*rate);
+		DPRINTK("extclk set rate = %lu -> %lu\n", rate, 256*rate);
 		clk_set_rate(priv->extclk, 256*rate);
 		writel(KIRKWOOD_MCLK_SOURCE_EXTCLK, 
 		       priv->io+KIRKWOOD_CLOCKS_CTRL);
@@ -364,9 +382,9 @@ static int kirkwood_i2s_play_trigger(struct snd_pcm_substream *substream,
 		if (priv->spdif)
 			value |= KIRKWOOD_PLAYCTL_SPDIF_EN;
 		writel(value, priv->io + KIRKWOOD_PLAYCTL);
-
-		kirkwood_i2s_dump_spdif(priv);
-		
+#ifdef KWI2SDEBUG
+		kirkwood_i2s_dump_spdif(__func__, priv);
+#endif		
 		break;
 
 	case SNDRV_PCM_TRIGGER_STOP:

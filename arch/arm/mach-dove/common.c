@@ -324,8 +324,9 @@ void __init dove_ehci1_init(void)
  ****************************************************************************/
 void __init dove_ge00_init(struct mv643xx_eth_platform_data *eth_data)
 {
-	orion_ge00_init(eth_data,
-			DOVE_GE00_PHYS_BASE, IRQ_DOVE_GE00_SUM, NO_IRQ);
+	orion_ge00_init(eth_data, DOVE_GE00_PHYS_BASE,
+			IRQ_DOVE_GE00_SUM, IRQ_DOVE_GE00_ERR,
+			1600);
 }
 
 /*****************************************************************************
@@ -441,6 +442,15 @@ struct sys_timer dove_timer = {
 void __init dove_wdt_init(void)
 {
 	orion_wdt_init();
+}
+
+/*****************************************************************************
+ * Cryptographic Engines and Security Accelerator (CESA)
+ ****************************************************************************/
+void __init dove_crypto_init(void)
+{
+	orion_crypto_init(DOVE_CRYPT_PHYS_BASE, DOVE_CESA_PHYS_BASE,
+			  DOVE_CESA_SIZE, IRQ_DOVE_CRYPTO);
 }
 
 /*****************************************************************************

@@ -10,7 +10,7 @@
 *    This program is distributed in the hope that it will be useful,
 *    but WITHOUT ANY WARRANTY; without even the implied warranty of
 *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public Lisence for more details.
+*    GNU General Public License for more details.
 *
 *    You should have received a copy of the GNU General Public License
 *    along with this program; if not write to the Free Software
@@ -94,9 +94,9 @@ _Print(
 
     if (strcmp(Message, "$$FLUSH$$") == 0)
     {
-	spin_lock(&_lock);
-	{
-		OutputDebugString(gcvNULL);
+    	spin_lock(&_lock);
+    	{
+        	OutputDebugString(gcvNULL);
         }
         spin_unlock(&_lock);
         return;
@@ -126,9 +126,9 @@ _Print(
     }
 
     /* Output to debugger. */
-	spin_lock(&_lock);
-	{
-	OutputDebugString(buffer);
+   	spin_lock(&_lock);
+   	{
+    	OutputDebugString(buffer);
     }
     spin_unlock(&_lock);
 

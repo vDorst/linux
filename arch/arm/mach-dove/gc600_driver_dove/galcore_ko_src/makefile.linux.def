@@ -1,16 +1,16 @@
 ##############################################################################
-#  
+#
 #    Copyright (c) 2005 - 2010 by Vivante Corp.  All rights reserved.
-#  
+#
 #    The material in this file is confidential and contains trade secrets
 #    of Vivante Corporation. This is proprietary information owned by
-#    Vivante Corporation. No part of this work may be disclosed, 
-#    reproduced, copied, transmitted, or used in any way for any purpose, 
+#    Vivante Corporation. No part of this work may be disclosed,
+#    reproduced, copied, transmitted, or used in any way for any purpose,
 #    without the express written permission of Vivante Corporation.
-#  
+#
 ##############################################################################
-#  
-#  
+#
+#
 ##############################################################################
 
 
@@ -131,7 +131,7 @@ ifeq ($(ABI), 0)
 else
 	CFLAGS += -mabi=$(ABI)
 endif
-	
+
 ifneq ($(ENDIANNESS),)
    	CFLAGS += $(ENDIANNESS)
 	LFLAGS += $(ENDIANNESS)
@@ -143,7 +143,7 @@ ifeq ($(ANDROID), 1)
     USE_VDK = 0
 
     ifeq ($(ARCH_TYPE), arm)
-	CFLAGS += -I$(ANDROID_HOME)/bionic/libstdc++/include -I$(ANDROID_HOME)/bionic/libc/arch-arm/include -I$(ANDROID_HOME)/bionic/libc/include -I$(ANDROID_HOME)/bionic/libc/kernel/common/ -I$(ANDROID_HOME)/bionic/libc/kernel/arch-arm -I$(ANDROID_HOME)/bionic/libm/include -I$(ANDROID_HOME)/bionic/libm/include/arch/arm -I$(ANDROID_HOME)/bionic/libthread_db/include -I$(ANDROID_HOME)/system/core/include -I$(ANDROID_HOME)/frameworks/base/include 
+	CFLAGS += -I$(ANDROID_HOME)/bionic/libstdc++/include -I$(ANDROID_HOME)/bionic/libc/arch-arm/include -I$(ANDROID_HOME)/bionic/libc/include -I$(ANDROID_HOME)/bionic/libc/kernel/common/ -I$(ANDROID_HOME)/bionic/libc/kernel/arch-arm -I$(ANDROID_HOME)/bionic/libm/include -I$(ANDROID_HOME)/bionic/libm/include/arch/arm -I$(ANDROID_HOME)/bionic/libthread_db/include -I$(ANDROID_HOME)/system/core/include -I$(ANDROID_HOME)/frameworks/base/include
         CFLAGS += -DANDROID -D__ARM_ARCH_5__ -D__ARM_ARCH_5T__ -D__ARM_ARCH_5E__ -D__ARM_ARCH_5TE__ -fno-short-enums
     endif
 
@@ -158,10 +158,14 @@ ifeq ($(ANDROID), 1)
     ifeq ($(ANDROID_VERSION_ECLAIR), 1)
         CFLAGS += -DANDROID_VERSION_ECLAIR
     endif
+
+    ifeq ($(ANDROID_VERSION_GINGERBREAD), 1)
+        CFLAGS +=  -I$(ANDROID_HOME)/frameworks/base/native/include -DANDROID_VERSION_GINGERBREAD
+    endif
 endif
 
 ifeq ($(QNX), 1)
-	CFLAGS += -D__QNXNTO__   
+	CFLAGS += -D__QNXNTO__
 else
 	ifneq ($(USE_ARMCC),1)
 		CFLAGS += -DLINUX
@@ -191,7 +195,7 @@ endif
 ifeq ($(DEBUG), 1)
 	CFLAGS += -g -fPIC -O0 -DDEBUG -D_DEBUG
 else
-	CFLAGS += -O2 -fPIC -g
+	CFLAGS += -O2 -fPIC
 endif
 
 ifeq ($(EGL_API_FB), 1)
@@ -211,12 +215,6 @@ ifeq ($(MRVL_NATIVE_IMAGE_KHR_FOR_CHROME),1)
     CFLAGS += -DMRVL_NATIVE_IMAGE_KHR_FOR_CHROME=1
 else
     CFLAGS += -DMRVL_NATIVE_IMAGE_KHR_FOR_CHROME=0
-endif
-
-ifeq ($(MRVL_EGL_SUPPORT_RESIZE_WINDOW),1)
-    CFLAGS += -DMRVL_EGL_SUPPORT_RESIZE_WINDOW=1
-else
-    CFLAGS += -DMRVL_EGL_SUPPORT_RESIZE_WINDOW=0
 endif
 
 ifeq ($(USE_NEW_LINUX_SIGNAL), 1)
@@ -242,11 +240,18 @@ endif
 
 CFLAGS += -DgcdREGISTER_ACCESS_FROM_USER=1
 
-CFLAGS += -D__KERNEL_SYSCALLS__
 ################################################################################
 # Build with profiler
 ifeq ($(USE_PROFILER),1)
-CFLAGS += -DVIVANTE_PROFILER=1
+    CFLAGS += -DVIVANTE_PROFILER=1
+else
+    CFLAGS += -DVIVANTE_PROFILER=0
+endif
+
+ifeq ($(USE_MRVL_PROFILER),1)
+    CFLAGS += -DMRVL_BENCH=1
+else
+    CFLAGS += -DMRVL_BENCH=0
 endif
 
 
@@ -278,7 +283,7 @@ SC2X_LIB_DIR    := $(GLES2X_DIR)/slc/glslang/MachineIndependent/compiler
 endif
 
 ifeq ($(ANDROID), 1)
-GCU_DIR		:= $(AQROOT)/gcu/proj/eclair
+GCU_DIR		:= $(AQROOT)/gcu/proj/android
 else
 GCU_DIR		:= $(AQROOT)/gcu/proj/linux
 endif
@@ -306,7 +311,7 @@ CONFORM_DIR     := $(AQROOT)/test/es11/conform
 else
 # old es11 conformce test was removed
 # $(AQROOT)/driver/openGL/es11/test/conform
-CONFORM_DIR	    := 
+CONFORM_DIR	    :=
 endif
 
 GLBES11_DIR     := $(AQROOT)/test/es11/GLBenchmark_ES1.1v2
@@ -330,13 +335,16 @@ KANZI_DIR       := $(AQROOT)/test/es20/Kanzi_UI_demo/Kanzi_UI_src
 AB20_DIR        := $(ES2X_TEST_DIR)/Automotive
 JRC_DIR         := $(ES2X_TEST_DIR)/JRC
 GFX_TEST_DIR    := $(AQROOT)/test/gfx
+ES20_GEARS_DIR  := $(AQROOT)/test/es20/gles2-cm-gears
 ES11_UNIT_DIR   := $(AQROOT)/test/es11/common/UnitTest
 ES11_EXTERN_DIR := $(AQROOT)/test/es11/extern
+ES11_EXTENSION_DIR := $(AQROOT)/test/es11/Extension
+ES11_GEARS_DIR	:= $(AQROOT)/test/es11/gles1-cm-gears
 VG11_UNIT_DIR   := $(AQROOT)/test/vg11/UnitTest
 VG11_EXTERN_DIR := $(AQROOT)/test/vg11/extern
 
 # third party resources
-DFB_DIR ?= $(TOOL_DIR)/dfb 
+DFB_DIR ?= $(TOOL_DIR)/dfb
 
 TEXTURE5_DIR    := $(ES2X_TEST_DIR)/texture5
 TEXTURE7_DIR    := $(ES2X_TEST_DIR)/texture7
@@ -345,4 +353,6 @@ ACTINIUM_DIR    := $(ES2X_TEST_DIR)/actinium
 VVLAUNCHER_DIR  := $(ES2X_TEST_DIR)/vv_launcher
 
 VIDEOCUBE_DIR	:= $(AQROOT)/test/es11/extern/VideoCube
+
+
 

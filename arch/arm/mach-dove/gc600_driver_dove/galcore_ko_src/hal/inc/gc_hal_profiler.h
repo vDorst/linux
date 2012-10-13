@@ -10,7 +10,7 @@
 *    This program is distributed in the hope that it will be useful,
 *    but WITHOUT ANY WARRANTY; without even the implied warranty of
 *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public Lisence for more details.
+*    GNU General Public License for more details.
 *
 *    You should have received a copy of the GNU General Public License
 *    along with this program; if not write to the Free Software
@@ -127,14 +127,10 @@ typedef struct _gcsPROFILER
 
     /* Clock Info */
     gctUINT64       		frameStart;
-    gctUINT64       		frameEnd;
 
     /* Current frame information */
     gctUINT32       		frameNumber;
     gctUINT64       		frameStartTimeusec;
-    gctUINT64       		frameEndTimeusec;
-    gctUINT64       		frameStartCPUTimeusec;
-    gctUINT64       		frameEndCPUTimeusec;
 
 #if PROFILE_HAL_COUNTERS
     gctUINT32       		vertexBufferTotalBytesAlloc;
@@ -152,12 +148,6 @@ typedef struct _gcsPROFILER
     int             		textureBufferTotalObjectsAlloc;
     int             		textureBufferNewObjectsAlloc;
 
-    gctUINT32       		numCommits;
-    gctUINT32       		drawPointCount;
-    gctUINT32       		drawLineCount;
-    gctUINT32       		drawTriangleCount;
-    gctUINT32       		drawVertexCount;
-    gctUINT32       		redundantStateChangeCalls;
 #endif
 }
 gcsPROFILER;
@@ -229,4 +219,3 @@ gcoPROFILER_ShaderFS(
 #endif
 
 #endif /* __gc_hal_profiler_h_ */
-

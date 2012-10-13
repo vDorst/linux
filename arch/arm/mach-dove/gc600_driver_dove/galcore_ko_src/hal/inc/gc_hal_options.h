@@ -10,7 +10,7 @@
 *    This program is distributed in the hope that it will be useful,
 *    but WITHOUT ANY WARRANTY; without even the implied warranty of
 *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public Lisence for more details.
+*    GNU General Public License for more details.
 *
 *    You should have received a copy of the GNU General Public License
 *    along with this program; if not write to the Free Software
@@ -122,7 +122,15 @@
 #define gcdDUMP						0
 
 /*
-	gcdDUMP_IN_KERNEL
+    gcdDUMP_API
+
+        When set to 1, a high level dump of the EGL and GL/VG APs's are
+        captured.
+*/
+#define gcdDUMP_API                 0
+
+/*
+    gcdDUMP_IN_KERNEL
 
 		When set to 1, all dumps will happen in the kernel.  This is handy if
 		you want the kernel to dump its command buffers as well and the data
@@ -220,6 +228,83 @@
 */
 #define MRVL_TAVOR_PV2_DISABLE_YFLIP        0
 
+/*
+    gcdNO_POWER_MANAGEMENT
+
+    This define disables the power management code.
+*/
+#ifndef gcdNO_POWER_MANAGEMENT
+#   define gcdNO_POWER_MANAGEMENT           0
+#endif
+
+/*
+    VIVANTE_POWER_MANAGE
+
+    This define enable the vivante power management code.
+*/
+#ifndef VIVANTE_POWER_MANAGE
+#   define VIVANTE_POWER_MANAGE             1
+#endif
+/*
+    gcdFPGA_BUILD
+
+    This define enables work arounds for FPGA images.
+*/
+#if !defined(gcdFPGA_BUILD)
+#   define gcdFPGA_BUILD                    0
+#endif
+
+/*
+    gcdGPU_TIMEOUT
+
+    This define specified the number of milliseconds the system will wait before
+    it broadcasts the GPU is stuck.  In other words, it will define the timeout
+    of any operation that needs to wait for the GPU.
+
+    If the value is 0, no timeout will be checked for.
+*/
+#if !defined(gcdGPU_TIMEOUT)
+#   define gcdGPU_TIMEOUT                   0
+#endif
+
+/*
+ * MACRO definition of MRVL
+ */
+#ifdef CONFIG_CPU_PXA910
+#define MRVL_PLATFORM_TD                    1
+#else
+#define MRVL_PLATFORM_TD                    0
+#endif
+
+#ifdef CONFIG_PXA95x
+#define MRVL_PLATFORM_MG1                   1
+#else
+#define MRVL_PLATFORM_MG1                   0
+#endif
+
+#ifdef CONFIG_CPU_MMP2
+#define MRVL_PLATFORM_MMP2                  1
+#else
+#define MRVL_PLATFORM_MMP2                  0
+#endif
+
+#if (defined CONFIG_DVFM) && (defined CONFIG_DVFM_PXA910)
+#define MRVL_CONFIG_DVFM_TD                 1
+#else
+#define MRVL_CONFIG_DVFM_TD                 0
+#endif
+
+#ifdef CONFIG_PXA95x
+#define MRVL_CONFIG_DVFM_MG1                1
+#else
+#define MRVL_CONFIG_DVFM_MG1                0
+#endif
+
+#if (defined CONFIG_DVFM) && (defined CONFIG_DVFM_MMP2)
+#define MRVL_CONFIG_DVFM_MMP2               1
+#else
+#define MRVL_CONFIG_DVFM_MMP2               0
+#endif
 
 /*
     MRVL_LOW_POWER_MODE_DEBUG
@@ -233,13 +318,14 @@
 
 /*
     MRVL_SWAP_BUFFER_IN_EVERY_DRAW
-    
+
     This define force swapbuffer after every drawElement/drawArray.
 */
 #define MRVL_SWAP_BUFFER_IN_EVERY_DRAW      0
 
-#define MRVL_BENCH							0
-
+#ifndef MRVL_BENCH
+#   define MRVL_BENCH						0
+#endif
 
 #define MRVL_EANBLE_COMPRESSION_DXT         0
 
@@ -256,11 +342,17 @@
 #define MRVL_DISABLE_SWAP_THREAD			1
 
 /* API log enable */
-#define MRVL_ENABLE_API_LOG				    0
-#define MRVL_ENABLE_EGL_API_LOG			    0
-#define MRVL_ENABLE_OES1_API_LOG			0
-#define MRVL_ENABLE_OES2_API_LOG			0
-#define MRVL_ENABLE_OVG_API_LOG			    0
+#define MRVL_ENABLE_ERROR_LOG               1
+#define MRVL_ENABLE_API_LOG                 0
+#define MRVL_ENABLE_EGL_API_LOG             0
+#define MRVL_ENABLE_OES1_API_LOG            0
+#define MRVL_ENABLE_OES2_API_LOG            0
+#define MRVL_ENABLE_OVG_API_LOG             0
+
+/* enable it can dump logs to file
+ * for android can stop dump by "setprop marvell.graphics.dump_log 0"
+*/
+#define MRVL_DUMP_LOG_TO_FILE               0
 
 /* Optimization for Eclair UI */
 #define MRVL_OPTI_ANDROID_IMAGE             1
@@ -272,15 +364,81 @@
 
 #define MRVL_OPTI_COMPOSITOR                1
 #define MRVL_OPTI_COMPOSITOR_DEBUG          0
+#define MRVL_READ_PIXEL_2D                  1
+#define MRVL_2D_SKIP_CONTEXT                0
+#define MRVL_2D_FORCE_FILTER_UPLOAD			1
+
 
 #define MRVL_OPTI_STREAM_FAST_PATH          1
 #define MRVL_OPTI_USE_RESERVE_MEMORY        1
 
+/* Enable user mode heap allocation
+ * if enable, all internal structure should be allocated from pre-allocated heap
+ * if disable, all internal structure should be allocated by malloc directly
+ */
+#define MRVL_ENABLE_USERMODE_HEAP_ALLOCATION   0
+
+
 /* Enable a timer thread to check the status of GC periodically */
 #define MRVL_TIMER                          0
 
-/* Enable silent reset */
-#define MRVL_SILENT_RESET                   0
+/* Enable a idle profiling thread to turn off GC when idle */
+#if (MRVL_PLATFORM_TD || MRVL_PLATFORM_MG1 || MRVL_PLATFORM_MMP2) && (defined ANDROID)
+#define MRVL_PROFILE_THREAD                 1
+#else
+#define MRVL_PROFILE_THREAD                 0
+#endif
+
+/* Enable a guard thread to check the status of GC */
+#if (MRVL_PLATFORM_TD || MRVL_PLATFORM_MG1) && (defined ANDROID)
+#define MRVL_GUARD_THREAD                   1
+#define MRVL_PRINT_CMD_BUFFER               1
+#else
+#define MRVL_GUARD_THREAD                   0
+#define MRVL_PRINT_CMD_BUFFER               0
+#endif
+
+/* Power -- Enable clock gating */
+#define MRVL_ENABLE_CLOCK_GATING            1
+
+/* Power -- Enable frequency scaling */
+#define MRVL_ENABLE_FREQ_SCALING            1
+
+/* Enable dvfm control for certain platform */
+#if MRVL_CONFIG_DVFM_MG1 || MRVL_CONFIG_DVFM_MMP2
+#define MRVL_CONFIG_ENABLE_DVFM             1
+#else
+#define MRVL_CONFIG_ENABLE_DVFM             0
+#endif
+
+/* Separate GC clk and power on/off */
+#if (MRVL_PLATFORM_TD || MRVL_PLATFORM_MG1)
+#define SEPARATE_CLOCK_AND_POWER            1
+#define KEEP_POWER_ON                       0
+#else
+#define SEPARATE_CLOCK_AND_POWER            0
+#endif
+
+/* Enable control of AXI bus clock */
+#if MRVL_PLATFORM_MG1
+#define MRVL_CONFIG_AXICLK_CONTROL          1
+#else
+#define MRVL_CONFIG_AXICLK_CONTROL          0
+#endif
+
+/* Enable early-suspend related functions */
+#if (defined CONFIG_HAS_EARLYSUSPEND) && (defined CONFIG_EARLYSUSPEND)
+#define MRVL_CONFIG_ENABLE_EARLYSUSPEND     1
+#else
+#define MRVL_CONFIG_ENABLE_EARLYSUSPEND     0
+#endif
+
+/* Enable BSP runtime or idle profile */
+#if (defined CONFIG_PXA910_DVFM_STATS)
+#define ENABLE_BSP_IDLE_PROFILE             1
+#else
+#define ENABLE_BSP_IDLE_PROFILE             0
+#endif
 
 /* Force surface format RGBA8888*/
 #define MRVL_FORCE_8888                     0
@@ -290,37 +448,85 @@
 #define MRVL_PRESERVE_CMD_BUFFER            1
 
 /*
-    MRVL_PRINT_CMD_BUFFER
-
-    This define enable print cmd buffer and link chain code
+	Record texture in command buffer for it idle or not
 */
-#define MRVL_PRINT_CMD_BUFFER               0
+#define MRVL_TEXTURE_USED_LIST              0
 
 /*
-    POWER_OFF_GC_WHEN_IDLE
-    This enable idle-power-off strategy on TD
+	simple wait vsync
 */
-#define POWER_OFF_GC_WHEN_IDLE  1
+#define MRVL_SIMPLE_WAIT_VSYNC				0
+
+/*
+ * 	to decrese mov instruction
+ */
+#define MRVL_OPTIMIZE_LIGHT_MOV				0
+
+/*
+ *      for eglSwapInterval in Android
+ */
+#define MRVL_ANDROID_VSYNC_INTERVAL         1
+
+/*      for speed up texture lookup
+ *
+ */
+#define MRVL_OPT_TEXTURE_LOOKUP             1
+
+/*
+ *      skip unnecessary texture attribute validate
+ */
+#define MRVL_TEXTURE_VALIDATE_OPT           1
+
+/*
+ *      New Back Copy Propagation Optimization
+ */
+#define MRVL_NEW_BCP_OPT                    1
+
+/*
+ *      VBO dirty patch Optimization
+ */
+#define MRVL_VBO_DIRTY_PATCH                1
+
+/*
+ *      Pre-allocated context buffers and reuse them
+ */
+#define MRVL_PRE_ALLOCATE_CTX_BUFFER		1
+
+#if MRVL_PRE_ALLOCATE_CTX_BUFFER
+/*	Minimal number of context buffers.
+*	Can't be less than 2, or it can't get the signal when wait.
+*/
+#define gcdCTXBUF_SIZE_MIN					2
+/*
+*	Number of context buffers to use per client by default.
+*/
+#define gcdCTXBUF_SIZE_DEFAULT				10
+#endif
+
+/*
+ *  Remove image texture surface to save video memory on 2d path.
+ */
+#define MRVL_MEM_OPT                        1
 
 /*
     Definitions for vendor, renderer and version strings
 */
+
 #define _VENDOR_STRING_             "Marvell Technology Group Ltd"
 
-#define _EGL_VERSION_STRING_        "EGL 1.3 Ver0.8.0.1998";      
+#define _EGL_VERSION_STRING_        "EGL 1.3";
 
 #if defined(COMMON_LITE)
-#define _OES11_VERSION_STRING_      "OpenGL ES-CL 1.1 Ver0.8.0.1998";
+#define _OES11_VERSION_STRING_      "OpenGL ES-CL 1.1";
 #else
-#define _OES11_VERSION_STRING_      "OpenGL ES-CM 1.1 Ver0.8.0.1998";
+#define _OES11_VERSION_STRING_      "OpenGL ES-CM 1.1";
 #endif
 
-#define _OES20_VERSION_STRING_      "OpenGL ES 2.0 Ver0.8.0.1998";
-#define _GLSL_ES_VERSION_STRING_    "OpenGL ES GLSL ES 1.00 Ver0.8.0.1998"
+#define _OES20_VERSION_STRING_      "OpenGL ES 2.0";
+#define _GLSL_ES_VERSION_STRING_    "OpenGL ES GLSL ES 1.00"
 
-#define _OPENVG_VERSION_STRING_     "OpenVG 1.1 Ver0.8.0.1998"
+#define _OPENVG_VERSION_STRING_     "OpenVG 1.1"
 
-#define _GAL_VERSION_STRING_        "GAL Ver0.8.0.1998"
+#define _GC_VERSION_STRING_        "GC Ver0.8.0.3184-1"
 
 #endif /* __gc_hal_options_h_ */
-

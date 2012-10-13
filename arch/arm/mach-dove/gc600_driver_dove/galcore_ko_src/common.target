@@ -21,7 +21,8 @@
 
 ################################################################################
 # Define a shortcut for the main target.
-SO_SUFFIX = .1
+#SO_SUFFIX = .1
+SO_SUFFIX =
 TARGET_OUTPUT = $(OBJ_DIR)/$(TARGET_NAME)
 
 ################################################################################
@@ -81,7 +82,14 @@ ifeq ($(DYNAMIC), 1)
 ifeq ($(USE_ARMCC), 1)
 LFLAGS += --shared -L--soname=,$(TARGET_NAME)$(SO_SUFFIX)
 else
+LFLAGS += --shared -L--soname=,$(TARGET_NAME)
+endif
+else
+ifeq ($(CONFIG_DOVE_GPU), 1)
 LFLAGS += -Wall -shared -Wl,-soname,$(TARGET_NAME)$(SO_SUFFIX)
+else
+LFLAGS += -Wall -shared -Wl,-soname,$(TARGET_NAME)
+endif
 endif
 $(TARGET_OUTPUT): $(PREREQUISITES) $(OBJECTS)
 	$(CC) $(LFLAGS) $(OBJECTS) $(LIBS) -o $(TARGET_OUTPUT)
