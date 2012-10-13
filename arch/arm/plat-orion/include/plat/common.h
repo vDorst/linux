@@ -15,23 +15,19 @@ struct dsa_platform_data;
 
 void __init orion_uart0_init(unsigned int membase,
 			     resource_size_t mapbase,
-			     unsigned int irq,
-			     struct clk *clk);
+			     unsigned int irq);
 
 void __init orion_uart1_init(unsigned int membase,
 			     resource_size_t mapbase,
-			     unsigned int irq,
-			     struct clk *clk);
+			     unsigned int irq);
 
 void __init orion_uart2_init(unsigned int membase,
 			     resource_size_t mapbase,
-			     unsigned int irq,
-			     struct clk *clk);
+			     unsigned int irq);
 
 void __init orion_uart3_init(unsigned int membase,
 			     resource_size_t mapbase,
-			     unsigned int irq,
-			     struct clk *clk);
+			     unsigned int irq);
 
 void __init orion_rtc_init(unsigned long mapbase,
 			   unsigned long irq);

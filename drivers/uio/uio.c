@@ -711,6 +711,24 @@ static int uio_mmap(struct file *filep, struct vm_area_struct *vma)
 	}
 }
 
+static long uio_unlocked_ioctl(struct file *filep, unsigned int cmd,
+			      unsigned long arg)
+{
+	struct uio_listener *listener = filep->private_data;
+	struct uio_device *idev = listener->dev;
+	int ret = 0;
+	if (idev->info) {
+		if (idev->info->unlocked_ioctl) {
+			if (!try_module_get(idev->owner))
+				return -ENODEV;
+			ret = idev->info->unlocked_ioctl(idev->info, cmd, arg);
+			module_put(idev->owner);
+			return ret;
+		}
+	}
+	return -EINVAL;
+}
+
 static const struct file_operations uio_fops = {
 	.owner		= THIS_MODULE,
 	.open		= uio_open,
@@ -718,6 +736,7 @@ static const struct file_operations uio_fops = {
 	.read		= uio_read,
 	.write		= uio_write,
 	.mmap		= uio_mmap,
+	.unlocked_ioctl = uio_unlocked_ioctl,
 	.poll		= uio_poll,
 	.fasync		= uio_fasync,
 	.llseek		= noop_llseek,

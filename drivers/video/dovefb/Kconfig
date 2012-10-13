@@ -1,0 +1,35 @@
+config FB_DOVE
+	bool "Marvell LCD controller"
+	depends on FB && ARCH_DOVE
+	select FB_CFB_FILLRECT
+	select FB_CFB_COPYAREA
+	select FB_CFB_IMAGEBLIT
+	select I2C
+	select I2C_MV64XXX
+	select FB_DDC
+	select FB_MODE_HELPERS
+	select TDA19988 if MACH_CUBOX
+	help
+	  Support for Marvell Dove SoC LCD controller.
+
+config TDA19988
+	bool "NXP TDA19988 HDMI transmitter"
+	depends on FB && ARCH_DOVE
+	help
+	 Support for NXP TDA19988 HDMI transmitter. This is under ARCH_DOVE,
+	 but can be reused by other platforms.
+
+config DOVE_GPU
+	bool "Enable DOVE GPU support"
+	depends on ARCH_DOVE
+	default y
+	help
+	  Dove 88AP510 GC600 GPU Support
+
+config DOVE_GPU_MEM_SIZE
+	int "DOVE GPU memory size (MB)"
+	depends on DOVE_GPU
+	default 128
+	help
+	  Set the memory size to be reserved for GPU usage. The value should be
+	  between 64 and 128.

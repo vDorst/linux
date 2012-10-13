@@ -1,6 +1,6 @@
 config SND_KIRKWOOD_SOC
-	tristate "SoC Audio for the Marvell Kirkwood chip"
-	depends on ARCH_KIRKWOOD
+	tristate "SoC Audio for the Marvell Kirkwood and Dove chip"
+	depends on ARCH_KIRKWOOD || ARCH_DOVE
 	help
 	  Say Y or M if you want to add support for codecs attached to
 	  the Kirkwood I2S interface. You will also need to select the
@@ -8,6 +8,15 @@ config SND_KIRKWOOD_SOC
 
 config SND_KIRKWOOD_SOC_I2S
 	tristate
+
+config SND_KIRKWOOD_SOC_SPDIF
+	tristate "SoC Audio support for Kirkwood generic S/PDIF"
+	depends on SND_KIRKWOOD_SOC
+	select SND_KIRKWOOD_SOC_I2S
+	select SND_SOC_SPDIF
+	help
+	  Say Y if you want to add support for SoC audio on
+	  generic S/PDIF.
 
 config SND_KIRKWOOD_SOC_OPENRD
 	tristate "SoC Audio support for Kirkwood Openrd Client"
@@ -27,4 +36,3 @@ config SND_KIRKWOOD_SOC_T5325
 	help
 	  Say Y if you want to add support for SoC audio on
 	  the HP t5325 thin client.
-
