@@ -2325,6 +2325,7 @@ int snd_hda_codec_reset(struct hda_codec *codec)
 	}
 	if (codec->patch_ops.free)
 		codec->patch_ops.free(codec);
+	memset(&codec->patch_ops, 0, sizeof(codec->patch_ops));
 	snd_hda_jack_tbl_clear(codec);
 	codec->proc_widget_hook = NULL;
 	codec->spec = NULL;
@@ -2340,7 +2341,6 @@ int snd_hda_codec_reset(struct hda_codec *codec)
 	codec->num_pcms = 0;
 	codec->pcm_info = NULL;
 	codec->preset = NULL;
-	memset(&codec->patch_ops, 0, sizeof(codec->patch_ops));
 	codec->slave_dig_outs = NULL;
 	codec->spdif_status_reset = 0;
 	module_put(codec->owner);
@@ -4422,6 +4422,8 @@ static void __snd_hda_power_up(struct hda_codec *codec, bool wait_power_down)
 	 * then there is no need to go through power up here.
 	 */
 	if (codec->power_on) {
+		if (codec->power_transition < 0)
+			codec->power_transition = 0;
 		spin_unlock(&codec->power_lock);
 		return;
 	}

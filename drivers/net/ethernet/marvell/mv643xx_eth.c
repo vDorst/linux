@@ -2475,7 +2475,14 @@ static int mv643xx_eth_change_mtu(struct net_device *dev, int new_mtu)
 	dev->mtu = new_mtu;
 	mv643xx_eth_recalc_skb_size(mp);
 	tx_set_rate(mp, 1000000000, 16777216);
-
+	if (dev->mtu > 1600) {
+		dev->features &= ~NETIF_F_IP_CSUM;
+		dev->vlan_features &= ~NETIF_F_IP_CSUM;
+	} else {
+		dev->features |= NETIF_F_IP_CSUM;
+		dev->vlan_features |= NETIF_F_IP_CSUM;
+	}
+	
 	if (!netif_running(dev))
 		return 0;
 
