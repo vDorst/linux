@@ -76,7 +76,7 @@ extern struct input_dev *get_twm4030_input(void);
  *  Module params
  */
 
-static int param_verbose=1,param_major=0,param_minor=0,param_device=4,param_addr=0xFFFF;
+static int param_verbose=0,param_major=0,param_minor=0,param_device=4,param_addr=0xFFFF;
 module_param_named(verbose,param_verbose,int,S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(verbose, "Make the driver verbose");
 module_param_named(major, param_major, int, S_IRUGO);
@@ -581,35 +581,41 @@ static void cec_interrupt(struct work_struct *dummy)
 #endif
    }
    /* new phy addr means new EDID, mean HPD ! */
-   else if ((this->cec.phy_addr != new_phy_addr) &&        \
-       (this->cec.source_status == CEC_POWER_STATUS_ON)) {
-      LOG(KERN_INFO,"New physical address %02x\n",new_phy_addr);
+   else if ((this->cec.phy_addr != new_phy_addr) &&
+           (this->cec.source_status == CEC_POWER_STATUS_ON)) {
+      LOG(KERN_INFO,"New physical address %04x\n",new_phy_addr);
       this->cec.phy_addr = new_phy_addr;
 
-      if (!this->driver.raw_mode) {
-         if (this->cec.phy_addr != 0xFFFF) {
-            this->cec.rx_addr = get_next_logical_addr(
-               this->cec.device_type, CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST);
-            TRY(tmdlHdmiCecPollingMessage(this->cec.inst, this->cec.rx_addr));
-         }
+      if( !this->param.passive) {
+         if (!this->driver.raw_mode) {
+            if (this->cec.phy_addr != 0xFFFF) {
+               this->cec.rx_addr = get_next_logical_addr(
+                  this->cec.device_type, CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST);
+	       TRY(tmdlHdmiCecPollingMessage(this->cec.inst, this->cec.rx_addr));
+            }
+            else {
+               this->cec.rx_addr = CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST;
+	    }
+         } 
          else {
-            this->cec.rx_addr = CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST;
+            // Todo: how to notify libCEC about this ??
          }
-      } 
-      else {
-         // Todo: how to notify libCEC about this ??
       }
    }
 #ifdef GUI_OVER_HDMI
    else if (edid_received()) { /* Check me */
       if (this->cec.source_status == CEC_POWER_STATUS_STANDBY) {
-         /* only for GFX on HDMI, do not use if only video playback on HDMI */
-         TRY(tmdlHdmiCecImageViewOn(this->cec.inst,this->cec.initiator));
-         TRY(tmdlHdmiCecHandleInterrupt(this->cec.inst));
-         msleep(200);
-         TRY(tmdlHdmiCecActiveSource(this->cec.inst,this->cec.phy_addr));
-         this->cec.source_status = CEC_POWER_STATUS_ON;
-         goto TRY_DONE;
+         LOG(KERN_INFO,"EDID received in CEC_POWER_STATUS_STANDBY\n");
+
+         if( !this->param.passive) {
+            /* only for GFX on HDMI, do not use if only video playback on HDMI */
+            TRY(tmdlHdmiCecImageViewOn(this->cec.inst,this->cec.initiator));
+            TRY(tmdlHdmiCecHandleInterrupt(this->cec.inst));
+            msleep(200);
+            TRY(tmdlHdmiCecActiveSource(this->cec.inst,this->cec.phy_addr));
+            this->cec.source_status = CEC_POWER_STATUS_ON;
+            goto TRY_DONE;
+	 }
       }
    }
 #endif
@@ -788,6 +794,9 @@ static void eventCallbackCEC(tmdlHdmiCecEvent_t event, unsigned char *data, unsi
 
       return;
    }
+
+   if (this->param.passive)
+      return;
 
 
    if (event == TMDL_HDMICEC_CALLBACK_MESSAGE_AVAILABLE) {
@@ -1047,7 +1056,7 @@ static int hdmi_cec_init(cec_instance *this, const char *osd_name)
    this->cec.rx_addr = CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST;
    this->cec.rx_addr_mask = 0;
    this->cec.phy_addr = param_addr;			// 0xffff == unconfigured
-   this->cec.device_type = device_type(param_device);	// 4 == CEC_DEVICE_TYPE_PLAYBACK_DEVICE
+   this->cec.device_type = device_type(param_device); // 4 == CEC_DEVICE_TYPE_PLAYBACK_DEVICE 
 
    TRY(tmdlHdmiCecRegisterCallbacks(this->cec.inst,eventCallbackCEC));
 
@@ -2069,24 +2078,27 @@ static ssize_t this_cdev_write(struct file *pFile, const char *buffer, size_t le
    frame = (const cec_frame *)buffer;
    if (frame->size < 3 || frame->size > sizeof(cec_frame))
       return -EINVAL; 
+   
+
+   down(&this->driver.sem);
+
+   if (this->driver.write_pending || this->cec.source_status != CEC_POWER_STATUS_ON) {
+      up(&this->driver.sem);
+      return -EAGAIN;
+   }
 
 //printk(KERN_INFO "%s: %02x %02x%02x%02x%02x (%d)\n", __func__, 
 //  frame->addr,frame->data[0],frame->data[1],frame->data[2],frame->data[3], frame->size);
 
-   down(&this->driver.sem);
-
-   if (!this->driver.write_pending) {
-      if (this->cec.rx_addr == CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST ||
-          (frame->addr & 0xf0) != (CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST << 4)) {
-         TRY(tmdlHdmiCecSendMessage(this->cec.inst, (UInt8 *)&frame->addr, frame->size - 2));
-         this->driver.write_pending = 1;
-         bytes_written += length;
-//printk(KERN_INFO "%s: tmdlHdmiCecSendMessage O.K. (%d) \n", __func__, err);
-      }
-      else {
-         LOG(KERN_ERR,"initiator 'Broadcast' is not supported !\n");
-         goto TRY_DONE;
-      }
+   if (this->cec.rx_addr == CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST ||
+       (frame->addr & 0xf0) != (CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST << 4)) {
+      TRY(tmdlHdmiCecSendMessage(this->cec.inst, (UInt8 *)&frame->addr, frame->size - 2));
+      this->driver.write_pending = 1;
+      bytes_written += length;
+   }
+   else {
+      LOG(KERN_ERR,"initiator 'Broadcast' is not supported !\n");
+      goto TRY_DONE;
    }
 
 //LOG(KERN_INFO,"%d bytes\n",bytes_written);
@@ -2327,6 +2339,8 @@ static int __init cec_init(void)
    this->param.verbose = param_verbose;
    this->param.major = param_major;
    this->param.minor = param_minor;
+   this->param.passive = 1;
+   
    /* Hello word */
    printk(KERN_INFO "%s(%s) %d.%d.%d compiled: %s %s %s\n", HDMICEC_NAME, TDA_NAME, TDA_VERSION_MAJOR,
           TDA_VERSION_MINOR, TDA_VERSION_PATCHLEVEL, __DATE__, __TIME__, TDA_VERSION_EXTRA);

@@ -70,6 +70,7 @@ typedef void (*cec_callback_t) (struct work_struct *dummy);
 typedef struct {
    /* module params */
    struct { 
+      int passive;
       int verbose;
       int major;
       int minor;
