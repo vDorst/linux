@@ -782,17 +782,21 @@ void show_video(tda_instance *this) {
 static void interrupt_polling(struct work_struct *dummy)
 {
    tda_instance *this=&our_instance;
-   int err=0;
+   tmdlHdmiTxEvent_t prevEvent;
+   int err=0, loopCnt=0;
 
-   /* Tx part */
-   TRY(tmdlHdmiTxHandleInterrupt(this->tda.instance));
+   do {
+      prevEvent = this->tda.event;
 
-   /* CEC part */
-   if (this->driver.cec_callback)
-	this->driver.cec_callback(dummy);
+      /* Tx part */
+      TRY(tmdlHdmiTxHandleInterrupt(this->tda.instance));
 
-   /* FIX : IT anti debounce */
-   TRY(tmdlHdmiTxHandleInterrupt(this->tda.instance));
+      /* CEC part */
+      if (this->driver.cec_callback)
+         this->driver.cec_callback(dummy);
+
+   } while (this->tda.event != prevEvent && ++loopCnt < 4 );
+   
 
  TRY_DONE:
 
@@ -914,7 +918,7 @@ static void eventCallbackTx(tmdlHdmiTxEvent_t event)
 
    this->tda.event=event;
    if (TMDL_HDMITX_HDCP_INACTIVE != event) {
-      printk(KERN_INFO "hdmi %s\n",tda_spy_event(event));
+      printk(KERN_INFO "hdmitx %s\n",tda_spy_event(event));
    }
 
    switch (event) {
@@ -1413,9 +1417,10 @@ static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long 
    }
 
    if (_IOC_DIR(cmd) & _IOC_READ) 
-      err = !access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd)) || !arg;
+      err = !arg || !access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd));
    else if (_IOC_DIR(cmd) & _IOC_WRITE)
-      err = !access_ok(VERIFY_READ, (void __user *)arg, _IOC_SIZE(cmd)) || !arg;
+      err = !arg || !access_ok(VERIFY_READ, (void __user *)arg, _IOC_SIZE(cmd));
+   
    if (err) {
       printk(KERN_ERR "hdmitx:%s:argument access denied (check address vs value)\n",__func__);
       printk(KERN_ERR "_IOC_DIR:%d arg:%lx\n",_IOC_DIR(cmd),arg);
