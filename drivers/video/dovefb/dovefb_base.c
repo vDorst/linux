@@ -1119,6 +1119,14 @@ failed:
 	return ret;
 }
 
+static void dovefb_shutdown(struct platform_device *pdev)
+{
+	struct dovefb_info *dfi = platform_get_drvdata(pdev);
+	struct fb_info *fi = dfi->gfx_plane->fb_info;
+	
+	(*dovefb_gfx_ops.fb_blank)(FB_BLANK_POWERDOWN, fi);
+}
+
 #ifdef CONFIG_PM
 static int dovefb_suspend(struct platform_device *pdev, pm_message_t mesg)
 {
@@ -1232,6 +1240,7 @@ static int dovefb_resume(struct platform_device *pdev)
 
 static struct platform_driver dovefb_driver = {
 	.probe		= dovefb_probe,
+	.shutdown	= dovefb_shutdown,
 #ifdef CONFIG_PM
 	.suspend	= dovefb_suspend,
 	.resume		= dovefb_resume,
