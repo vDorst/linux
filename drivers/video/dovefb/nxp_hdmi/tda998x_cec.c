@@ -563,6 +563,10 @@ static void cec_interrupt(struct work_struct *dummy)
    int err=0;
    
    LOG(KERN_INFO,"called\n");
+   
+   /* sync with this_cdev_write */
+   down(&this->driver.sem);
+
 
    /* switch on/off CEC */
    if (!display_active && (this->cec.power == tmPowerOn)) {
@@ -591,11 +595,11 @@ static void cec_interrupt(struct work_struct *dummy)
             if (this->cec.phy_addr != 0xFFFF) {
                this->cec.rx_addr = get_next_logical_addr(
                   this->cec.device_type, CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST);
-	       TRY(tmdlHdmiCecPollingMessage(this->cec.inst, this->cec.rx_addr));
+               TRY(tmdlHdmiCecPollingMessage(this->cec.inst, this->cec.rx_addr));
             }
             else {
                this->cec.rx_addr = CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST;
-	    }
+            }
          } 
          else {
             // Todo: how to notify libCEC about this ??
@@ -613,9 +617,10 @@ static void cec_interrupt(struct work_struct *dummy)
             TRY(tmdlHdmiCecHandleInterrupt(this->cec.inst));
             msleep(200);
             TRY(tmdlHdmiCecActiveSource(this->cec.inst,this->cec.phy_addr));
-            this->cec.source_status = CEC_POWER_STATUS_ON;
-            goto TRY_DONE;
-	 }
+         }
+         
+         this->cec.source_status = CEC_POWER_STATUS_ON;
+         goto TRY_DONE;
       }
    }
 #endif
@@ -649,6 +654,9 @@ static void cec_interrupt(struct work_struct *dummy)
    TRY(tmdlHdmiCecHandleInterrupt(this->cec.inst));
     
  TRY_DONE:
+
+   /* sync with this_cdev_write */
+   up(&this->driver.sem);
 
    /* setup next tick */
    if (!this->driver.deinit_req) {
@@ -2058,8 +2066,6 @@ static ssize_t this_cdev_read(struct file *pFile, char *buffer, size_t length, l
       bytes_returned += sizeof(cec_frame);
    }
 
-//LOG(KERN_INFO,"%d bytes\n",bytes_returned);
-
    return bytes_returned;
 }
 
@@ -2079,16 +2085,12 @@ static ssize_t this_cdev_write(struct file *pFile, const char *buffer, size_t le
    if (frame->size < 3 || frame->size > sizeof(cec_frame))
       return -EINVAL; 
    
-
    down(&this->driver.sem);
 
    if (this->driver.write_pending || this->cec.source_status != CEC_POWER_STATUS_ON) {
       up(&this->driver.sem);
       return -EAGAIN;
    }
-
-//printk(KERN_INFO "%s: %02x %02x%02x%02x%02x (%d)\n", __func__, 
-//  frame->addr,frame->data[0],frame->data[1],frame->data[2],frame->data[3], frame->size);
 
    if (this->cec.rx_addr == CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST ||
        (frame->addr & 0xf0) != (CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST << 4)) {
@@ -2100,8 +2102,6 @@ static ssize_t this_cdev_write(struct file *pFile, const char *buffer, size_t le
       LOG(KERN_ERR,"initiator 'Broadcast' is not supported !\n");
       goto TRY_DONE;
    }
-
-//LOG(KERN_INFO,"%d bytes\n",bytes_written);
 
    up(&this->driver.sem);
    return bytes_written;
@@ -2126,10 +2126,10 @@ static unsigned int this_cdev_poll(struct file *pFile, poll_table *poll_data)
       poll_wait(pFile, &this->driver.wait_write, poll_data);
 
       if (this->driver.read_queue_head != this->driver.read_queue_tail)
-   	 mask |= POLLIN | POLLRDNORM;	/* readable */
+         mask |= POLLIN | POLLRDNORM;	/* readable */
 
-      if (!this->driver.write_pending)
-   	 mask |= POLLOUT | POLLWRNORM;	/* writable */
+      if (!this->driver.write_pending && this->cec.source_status == CEC_POWER_STATUS_ON)
+         mask |= POLLOUT | POLLWRNORM;	/* writable */
 
    } else {
       mask |= POLLIN | POLLRDNORM | POLLOUT | POLLWRNORM;

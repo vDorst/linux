@@ -893,7 +893,7 @@ tmbslTDA9989HwHandleInterrupt
         /* Has the EDID_blk_rd interrupt occurs */
         if ((regVal & E_MASKREG_P00_INT_FLAGS_2_edid_blk_rd) != 0)
         {
-             fInterruptStatus = fInterruptStatus | (1 << HDMITX_CALLBACK_INT_EDID_BLK_READ);
+           fInterruptStatus = fInterruptStatus | (1 << HDMITX_CALLBACK_INT_EDID_BLK_READ);
         }
     }
 
@@ -962,29 +962,35 @@ tmbslTDA9989HwHandleInterrupt
 
            if (fInterruptStatus & (1 << HDMITX_CALLBACK_INT_EDID_BLK_READ))
            {
-               err = EdidBlockAvailable(txUnit,&sendEdidCallback);
-               RETIF(err != TM_OK, err)
-               if (sendEdidCallback == False)
+               if (pDis->hotPlugStatus == HDMITX_HOTPLUG_ACTIVE)
                {
-                   /* Read EDID not finished clear callback */
-                   fInterruptStatus &= ~(1 << HDMITX_CALLBACK_INT_EDID_BLK_READ);
-               }
-               else {
-                #ifdef TMFL_TDA9989_PIXEL_CLOCK_ON_DDC
-
-                if ( (pDis->vinFmt == HDMITX_VFMT_16_1920x1080p_60Hz) || (pDis->vinFmt == HDMITX_VFMT_31_1920x1080p_50Hz)) {
-
-                err = setHwRegisterField(pDis, 
-                                 E_REG_P02_PLL_SERIAL_3_RW, 
-                                 E_MASKREG_P02_PLL_SERIAL_3_srl_ccir,
-                                 0x00);
-                RETIF_REG_FAIL(err)
+                   err = EdidBlockAvailable(txUnit,&sendEdidCallback);
+                   RETIF(err != TM_OK, err)
+                   if (sendEdidCallback == False)
+                   {
+                       /* Read EDID not finished clear callback */
+                       fInterruptStatus &= ~(1 << HDMITX_CALLBACK_INT_EDID_BLK_READ);
+                   }
+                   else {
+                    #ifdef TMFL_TDA9989_PIXEL_CLOCK_ON_DDC
+    
+                    if ( (pDis->vinFmt == HDMITX_VFMT_16_1920x1080p_60Hz) || (pDis->vinFmt == HDMITX_VFMT_31_1920x1080p_50Hz)) {
+    
+                    err = setHwRegisterField(pDis, 
+                                     E_REG_P02_PLL_SERIAL_3_RW, 
+                                     E_MASKREG_P02_PLL_SERIAL_3_srl_ccir,
+                                     0x00);
+                    RETIF_REG_FAIL(err)
+                    }
+    
+                   #endif /* TMFL_TDA9989_PIXEL_CLOCK_ON_DDC */
+                   }
                 }
-
-               #endif /* TMFL_TDA9989_PIXEL_CLOCK_ON_DDC */
-               }
-
-
+                else
+                {
+                    ClearEdidRequest(txUnit);
+                    fInterruptStatus &= ~(1 << HDMITX_CALLBACK_INT_EDID_BLK_READ);
+                }
            }
       }
 

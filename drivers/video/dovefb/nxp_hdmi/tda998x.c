@@ -991,11 +991,9 @@ static void eventCallbackTx(tmdlHdmiTxEvent_t event)
       break;
    }
 
+ TRY_DONE:
    this->driver.poll_done=true;
    wake_up_interruptible(&this->driver.wait);
-   
- TRY_DONE:
-   (void)0;
 }
 
 /*
@@ -2035,9 +2033,11 @@ int tda19988_configure_tx_inout(int x, int y, int interlaced, int hz)
 			mode,hz,resolution_to_video_format[mode].hz);
 
 	if (initialized) {
-		this->tda.setio.video_in.format = mode;
-		this->tda.setio.video_out.format = mode;
-		show_video(this);
+	    if (this->tda.setio.video_in.format != mode) {
+            this->tda.setio.video_in.format = mode;
+            this->tda.setio.video_out.format = mode;
+    		show_video(this);
+    	}
 	} else {
 		saved_mode = mode;
 	}
@@ -2418,14 +2418,14 @@ static int __init tx_init(void)
 
    /* set video mode */
    if (saved_mode >= 0) {
-	this->tda.setio.video_in.format = saved_mode;
-	this->tda.setio.video_out.format = saved_mode;
-	show_video(this);
+      this->tda.setio.video_in.format = saved_mode;
+	  this->tda.setio.video_out.format = saved_mode;
+	  show_video(this);
    }
 
    /* enable cec callback */
    if (cec_callback) {
-	this->driver.cec_callback = cec_callback;
+	  this->driver.cec_callback = cec_callback;
    }
 
    return 0;
