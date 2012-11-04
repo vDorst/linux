@@ -128,6 +128,7 @@ typedef struct {
       tda_edid_latency edid_latency;
 #endif
       unsigned short src_address;
+      unsigned short src_address_prev;
       unsigned char raw_edid[EDID_BLOCK_COUNT*EDID_BLOCK_SIZE];
       tda_capabilities capabilities;
       tda_event event;

@@ -708,8 +708,8 @@ static int tda_spy(int verbose)
 /*
  * On HDCP
  */
-void hdcp_on(tda_instance *this) {
-
+void hdcp_on(tda_instance *this)
+{
    int err=0;
 
    if (this->tda.hdcp_status != HDCP_IS_NOT_INSTALLED) { /* check HDCP is installed ... */
@@ -731,8 +731,8 @@ void hdcp_on(tda_instance *this) {
 /*
  * Off HDCP
  */
-void hdcp_off(tda_instance *this) {
-
+void hdcp_off(tda_instance *this)
+{
    int err=0;
 
    if (this->tda.hdcp_status != HDCP_IS_NOT_INSTALLED) { /* check HDCP is installed ... */
@@ -748,15 +748,15 @@ void hdcp_off(tda_instance *this) {
 /*
  * Run video
  */
-void show_video(tda_instance *this) {
-
+void show_video(tda_instance *this)
+{
    int err=0;
 
    if (this->tda.rx_device_active) { /* check RxSens */
       if (this->tda.hot_plug_detect == TMDL_HDMITX_HOTPLUG_ACTIVE) { /* should be useless, but legacy... */
          if (this->tda.power == tmPowerOn) { /* check CEC or DSS didn't switch it off */
-            if (this->tda.src_address != 0xFFFF) { /* check EDID has been received */
-				hdcp_off(this);
+            if (this->tda.src_address != NO_PHY_ADDR) { /* check EDID has been received */
+               hdcp_off(this);
                TRY(tmdlHdmiTxSetInputOutput(this->tda.instance,         \
                                             this->tda.setio.video_in,   \
                                             this->tda.setio.video_out,  \
@@ -838,7 +838,7 @@ static void hdcp_check(struct work_struct *dummy)
       if (this->tda.rx_device_active) { /* check RxSens */
          if (this->tda.hot_plug_detect == TMDL_HDMITX_HOTPLUG_ACTIVE) { /* should be useless, but legacy... */
             if (this->tda.power == tmPowerOn) { /* check CEC didn't switch it off */
-               if (this->tda.src_address != 0xFFFF) { /* check EDID has been received */
+               if (this->tda.src_address != NO_PHY_ADDR) { /* check EDID has been received */
                   hdcp_off(this);
                   hdcp_on(this);				  
                }
@@ -926,10 +926,13 @@ static void eventCallbackTx(tmdlHdmiTxEvent_t event)
       TRY(tmdlHdmiTxGetEdidSourceAddress(this->tda.instance,        \
                                          &new_addr));
       LOG(KERN_INFO,"phy.@:%x\n",new_addr);
-      /*       if (this->tda.src_address == new_addr) { */
-      /*          break; */
-      /*       } */
+
+      if (new_addr == this->tda.src_address)
+         break;
+
       this->tda.src_address = new_addr;
+      this->tda.src_address_prev = NO_PHY_ADDR;
+
 #if defined (TMFL_TDA19989) || defined (TMFL_TDA9984) 
       tda_spy(this->param.verbose>=1);
 #endif
@@ -962,11 +965,14 @@ static void eventCallbackTx(tmdlHdmiTxEvent_t event)
       break;
    case TMDL_HDMITX_HPD_ACTIVE: /* HDMI is so funny u can get RxSens without being plugged !!! */
       this->tda.hot_plug_detect = TMDL_HDMITX_HOTPLUG_ACTIVE;
-      show_video(this);
+      this->tda.src_address = this->tda.src_address_prev;
+      this->tda.src_address_prev = NO_PHY_ADDR;
       break;
    case TMDL_HDMITX_HPD_INACTIVE: /* unplug */
       this->tda.hot_plug_detect = TMDL_HDMITX_HOTPLUG_INACTIVE;
-      this->tda.src_address = 0xFFFF;
+      if (this->tda.rx_device_active)
+         this->tda.src_address_prev = this->tda.src_address;
+      this->tda.src_address = NO_PHY_ADDR;
       break;
 #if defined (TMFL_TDA19989) || defined (TMFL_TDA9984) 
    case TMDL_HDMITX_HDCP_INACTIVE: /* HDCP drops off */
@@ -1096,6 +1102,7 @@ static int hdmi_tx_init(tda_instance *this)
    this->tda.setio.sink = TMDL_HDMITX_SINK_EDID; /* Don't skip edid reading */
    /*    this->tda.src_address = 0x1000; /\* debug *\/ */
    this->tda.src_address = NO_PHY_ADDR; /* it's unref */
+   this->tda.src_address_prev = NO_PHY_ADDR;
    initialized = 1;
  TRY_DONE:
    return err;
