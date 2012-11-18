@@ -284,7 +284,9 @@ static int check_surface(struct fb_info *fi,
 	    (dfli->surface.viewPortInfo.srcWidth != new_info->srcWidth ||
 	    dfli->surface.viewPortInfo.srcHeight != new_info->srcHeight ||
 	    dfli->surface.viewPortInfo.zoomXSize != new_info->zoomXSize ||
-	    dfli->surface.viewPortInfo.zoomYSize != new_info->zoomYSize)) {
+	    dfli->surface.viewPortInfo.zoomYSize != new_info->zoomYSize ||
+	    dfli->surface.viewPortInfo.ycPitch   != new_info->ycPitch   ||
+	    dfli->surface.viewPortInfo.uvPitch   != new_info->uvPitch)) {
 		var->xres = new_info->srcWidth;
 		var->yres = new_info->srcHeight;
 		var->xres_virtual = new_info->srcWidth;
