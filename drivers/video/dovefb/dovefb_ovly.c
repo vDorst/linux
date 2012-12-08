@@ -1252,6 +1252,8 @@ int dovefb_ovly_init(struct dovefb_info *info, struct dovefb_mach_info *dmi)
 	 * Fill in sane defaults.
 	 */
 	dovefb_set_mode(dfli, &fi->var, dmi->modes, dmi->pix_fmt, 0);
+	dfli->surface.viewPortInfo.ycPitch = (fi->var.xres * fi->var.bits_per_pixel) / 8;
+	dfli->surface.viewPortInfo.uvPitch = dfli->surface.viewPortInfo.ycPitch / 2;
 	dovefb_ovly_set_par(fi);
 
 	/*
