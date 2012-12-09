@@ -151,10 +151,11 @@
 
 /* Theses values come from the marvell alsa driver */
 /* need to find where they come from               */
+#define KIRKWOOD_SND_MAX_BUFFER_BYTES		0x40000		// 262144
+#define KIRKWOOD_SND_MAX_PERIOD_BYTES		0x8000		// 32768
+#define KIRKWOOD_SND_MIN_PERIOD_BYTES		0x800		// 512
+#define KIRKWOOD_SND_MAX_PERIODS		(KIRKWOOD_SND_MAX_BUFFER_BYTES/KIRKWOOD_SND_MIN_PERIOD_BYTES)
 #define KIRKWOOD_SND_MIN_PERIODS		8
-#define KIRKWOOD_SND_MAX_PERIODS		16
-#define KIRKWOOD_SND_MIN_PERIOD_BYTES		0x4000
-#define KIRKWOOD_SND_MAX_PERIOD_BYTES		0x4000
 
 struct kirkwood_dma_data {
 	struct resource *mem;
