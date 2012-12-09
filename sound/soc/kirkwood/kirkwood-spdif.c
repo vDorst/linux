@@ -72,8 +72,8 @@ static struct snd_soc_ops kirkwood_spdif_ops = {
 
 static struct snd_soc_dai_link kirkwood_spdif_dai0[] = {
 	{
-		.name = "S/PDIF0",
-		.stream_name = "S/PDIF0 PCM Playback",
+		.name = "SPDIF0",
+		.stream_name = "SPDIF0 PCM Playback",
 		.platform_name = "kirkwood-pcm-audio.0",
 		.cpu_dai_name = "kirkwood-i2s.0",
 		.codec_dai_name = "dit-hifi",
@@ -84,7 +84,7 @@ static struct snd_soc_dai_link kirkwood_spdif_dai0[] = {
 
 static struct snd_soc_dai_link kirkwood_spdif_dai1[] = {
 	{
-		.name = "S/PDIF1",
+		.name = "SPDIF1",
 		.stream_name = "IEC958 Playback",
 		.platform_name = "kirkwood-pcm-audio.1",
 		.cpu_dai_name = "kirkwood-i2s.1",
@@ -135,7 +135,7 @@ static int __devinit kirkwood_spdif_probe(struct platform_device *pdev)
 		goto kirkwood_spdif_err_card_alloc;
 	}
 
-	card->name = "Kirkwood S/PDIF";
+	card->name = "Kirkwood SPDIF";
 	card->owner = THIS_MODULE;
 	if (pdev->id == 0)
 		card->dai_link = kirkwood_spdif_dai0;
