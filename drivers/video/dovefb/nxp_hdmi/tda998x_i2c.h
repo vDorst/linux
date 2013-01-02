@@ -19,7 +19,7 @@
 #ifndef __i2c_h__
 #define __i2c_h__
 
-#define CEC_I2C_DEBUG
+//#define CEC_I2C_DEBUG
 
 struct i2c_client *txGetThisI2cClient(void);
 struct i2c_client *cecGetThisI2cClient(void);
