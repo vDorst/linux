@@ -41,28 +41,15 @@ static int kirkwood_spdif_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 
-#if 1
 	DPRINTK("substream = %p, params = %p\n", substream, params);
 	DPRINTK("rate = %d\n", params_rate(params));
 	DPRINTK("codec_dai = %s\n", codec_dai->name);
-	return 0;
-#else
-	unsigned int freq;
 
-	switch (params_rate(params)) {
-	default:
-	case 44100:
-		freq = 11289600;
-		break;
-	case 48000:
-		freq = 12288000;
-		break;
-	case 96000:
-		freq = 24576000;
-		break;
-	}
-	
-	return snd_soc_dai_set_sysclk(codec_dai, 0, freq, SND_SOC_CLOCK_IN);
+#if 1
+	(void)codec_dai;
+	return 0;	// our "codecs" don't support set_sysclk() 
+#else
+	return snd_soc_dai_set_sysclk(codec_dai, 0, params_rate(params) * 256, SND_SOC_CLOCK_IN);
 #endif
 }
 
@@ -70,26 +57,23 @@ static struct snd_soc_ops kirkwood_spdif_ops = {
 	.hw_params = kirkwood_spdif_hw_params,
 };
 
-static struct snd_soc_dai_link kirkwood_spdif_dai0[] = {
+static struct snd_soc_dai_link kirkwood_spdif_dai[] = {
 	{
 		.name = "SPDIF0",
 		.stream_name = "SPDIF0 PCM Playback",
 		.platform_name = "kirkwood-pcm-audio.0",
 		.cpu_dai_name = "kirkwood-i2s.0",
 		.codec_dai_name = "dit-hifi",
-		.codec_name = "spdif-dit",
+		.codec_name = "spdif-dit",			// standard SPDIF receiver
 		.ops = &kirkwood_spdif_ops,
 	},
-};
-
-static struct snd_soc_dai_link kirkwood_spdif_dai1[] = {
 	{
 		.name = "SPDIF1",
 		.stream_name = "IEC958 Playback",
 		.platform_name = "kirkwood-pcm-audio.1",
 		.cpu_dai_name = "kirkwood-i2s.1",
-		.codec_dai_name = "dit-hifi",
-		.codec_name = "spdif-dit",
+		.codec_dai_name = "hdmi-hifi",
+		.codec_name = "hdmi-dit",			// CuBox HDMI
 		.ops = &kirkwood_spdif_ops,
 	},
 };
@@ -97,6 +81,7 @@ static struct snd_soc_dai_link kirkwood_spdif_dai1[] = {
 static int __devinit kirkwood_spdif_probe(struct platform_device *pdev)
 {
 	struct snd_soc_card *card;
+	struct snd_soc_dai_link *link;
 	struct kirkwood_spdif_data *data;
 	struct platform_device *spdif_dit;
 	int ret;
@@ -106,7 +91,9 @@ static int __devinit kirkwood_spdif_probe(struct platform_device *pdev)
 	if (pdev->id < 0 || pdev->id > 1)
 		return -EINVAL;
 
-	spdif_dit = platform_device_alloc("spdif-dit", -1);
+	link = &kirkwood_spdif_dai[pdev->id];
+
+	spdif_dit = platform_device_alloc(link->codec_name, -1);
 	if (spdif_dit == NULL) {
 		dev_err(&pdev->dev, "unable to allocate spdif device\n");
 		return -ENOMEM;
@@ -137,10 +124,7 @@ static int __devinit kirkwood_spdif_probe(struct platform_device *pdev)
 
 	card->name = "Kirkwood SPDIF";
 	card->owner = THIS_MODULE;
-	if (pdev->id == 0)
-		card->dai_link = kirkwood_spdif_dai0;
-	else
-		card->dai_link = kirkwood_spdif_dai1;
+	card->dai_link = link;
 	card->num_links = 1;
 	card->dev = &pdev->dev;
 	snd_soc_card_set_drvdata(card, data);

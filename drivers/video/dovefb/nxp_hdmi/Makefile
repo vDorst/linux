@@ -128,6 +128,9 @@ hdmicec-objs := tda998x_cec.o
 #hdmitx-objs += tda998x_i2c.o
 hdmicec-objs += tda998x_i2c.o
 
+hdmitx-objs += tda998x_dai.o
+
+
 # NXP comps
 ifeq ($(TDA_TX),TDA19989)
 hdmitx-objs += $(TXSRC)/tmdlHdmiTx.o

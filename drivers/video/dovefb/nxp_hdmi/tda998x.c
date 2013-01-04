@@ -562,7 +562,7 @@ static char *tda_ioctl(int io)
  */
 static int tda_spy(int verbose)
 {
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
    int i,err=0;
 
    if (!verbose) {
@@ -781,7 +781,7 @@ void show_video(tda_instance *this)
  */
 static void interrupt_polling(struct work_struct *dummy)
 {
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
    tmdlHdmiTxEvent_t prevEvent;
    int err=0, loopCnt=0;
 
@@ -814,7 +814,7 @@ static void interrupt_polling(struct work_struct *dummy)
 static void hdcp_check(struct work_struct *dummy)
 {
    int err=0;
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
    tmdlHdmiTxHdcpCheck_t hdcp_status;
 
    down(&this->driver.sem);
@@ -858,7 +858,7 @@ static void hdcp_check(struct work_struct *dummy)
 
 void register_cec_interrupt(cec_callback_t fct)
 {
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
 
    if (initialized) 
 	this->driver.cec_callback = fct;
@@ -869,7 +869,7 @@ EXPORT_SYMBOL(register_cec_interrupt);
 
 void unregister_cec_interrupt(void)
 {
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
 
    cec_callback = NULL;
    this->driver.cec_callback = NULL;
@@ -909,7 +909,7 @@ static irqreturn_t tda_irq(int irq, void *_udc)
  */
 static void eventCallbackTx(tmdlHdmiTxEvent_t event)
 {
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
    int err=0;
    unsigned short new_addr;
 #if defined (TMFL_TDA19989) || defined (TMFL_TDA9984) 
@@ -1110,7 +1110,7 @@ static int hdmi_tx_init(tda_instance *this)
 
 void reset_hdmi(int hdcp_module)
 {
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
    int err=0;
 
    down(&this->driver.sem);
@@ -1158,7 +1158,7 @@ EXPORT_SYMBOL(reset_hdmi);
  */
 short edid_phy_addr(void)
 {
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
 
    return this->tda.src_address;
 }
@@ -1169,7 +1169,7 @@ EXPORT_SYMBOL(edid_phy_addr);
  */
 tda_power get_hdmi_status(void)
 { 
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
    
    return this->tda.power;
 }
@@ -1180,7 +1180,7 @@ EXPORT_SYMBOL(get_hdmi_status);
  */
 tda_power get_hpd_status(void)
 { 
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
    
    return (this->tda.hot_plug_detect == TMDL_HDMITX_HOTPLUG_ACTIVE);
 }
@@ -1191,7 +1191,7 @@ EXPORT_SYMBOL(get_hpd_status);
  */
 int edid_received(void)
 { 
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
    
    return (this->tda.event == TMDL_HDMITX_EDID_RECEIVED);
 }
@@ -1202,7 +1202,7 @@ EXPORT_SYMBOL(edid_received);
  */
 int hdmi_enable(void)
 {
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
    int err=0;
 
    LOG(KERN_INFO,"called\n");
@@ -1233,7 +1233,7 @@ EXPORT_SYMBOL(hdmi_enable);
  */
 int hdmi_disable(int event_tracking)
 { 
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
    int err=0;
    
    LOG(KERN_INFO,"called\n");
@@ -1265,7 +1265,7 @@ EXPORT_SYMBOL(hdmi_disable);
  */
 static int hdmi_panel_probe(struct omap_dss_device *dssdev)
 {
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
 
    LOG(KERN_INFO," called\n");
 
@@ -1822,7 +1822,7 @@ static int this_cdev_release(struct inode *pInode, struct file *pFile)
  */
 static int this_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
    int err=0;
 
    LOG(KERN_INFO,"called\n");
@@ -1919,18 +1919,26 @@ static int this_i2c_probe(struct i2c_client *client, const struct i2c_device_id 
 /* Addions to get EDID stuff out of the transmitter driver */
 const char *tda19988_get_edid(int *num_of_blocks)
 {
-	tda_instance* this = &our_instance;
-	if (!initialized) return NULL;
-	tmdlHdmiTxGetEdidStatus(this->tda.instance, &this->tda.edid.status, &this->tda.edid.block_count);
-	if (this->tda.edid.status) return NULL;
-	tmdlHdmiTxGetEdidMonitorDescriptors(this->tda.instance, \
-                                            this->tda.edid_md.desc1, \
-                                            this->tda.edid_md.desc2, \
-                                            this->tda.edid_md.other, \
-                                            this->tda.edid_md.max, \
-                                            &this->tda.edid_md.written);
-	*num_of_blocks = this->tda.edid.block_count;
-	return  this->tda.raw_edid;
+   tda_instance* this = &our_instance;
+
+   if (!initialized)
+      return NULL;
+
+   tmdlHdmiTxGetEdidStatus(this->tda.instance, 
+                           &this->tda.edid.status, 
+                           &this->tda.edid.block_count);
+   if (this->tda.edid.status) 
+      return NULL;
+
+   tmdlHdmiTxGetEdidMonitorDescriptors(this->tda.instance, \
+                                       this->tda.edid_md.desc1, \
+                                       this->tda.edid_md.desc2, \
+                                       this->tda.edid_md.other, \
+                                       this->tda.edid_md.max, \
+                                       &this->tda.edid_md.written);
+   *num_of_blocks = this->tda.edid.block_count;
+   
+   return this->tda.raw_edid;
 }
 
 static struct {
@@ -2013,43 +2021,102 @@ static struct {
 
 int tda19988_configure_tx_inout(int x, int y, int interlaced, int hz)
 {
-	tda_instance* this = &our_instance;
-	int i, d, mode = -1, rateDiff = 1000;
+   tda_instance* this = &our_instance;
+   int i, d, mode = -1, rateDiff = INT_MAX;
 
-	for (i = 0; rateDiff && i < sizeof(resolution_to_video_format); i++) {
-		if (	(x == resolution_to_video_format[i].x) &&
-			(y == resolution_to_video_format[i].y) &&
-			(interlaced == resolution_to_video_format[i].interlaced) ) {
-			d = abs(resolution_to_video_format[i].hz - hz);
-			if (d < rateDiff) {
-				rateDiff = d;
-				mode = resolution_to_video_format[i].vmode;
-			}
-		}
-	}
+   for (i = 0; rateDiff && i < ARRAY_SIZE(resolution_to_video_format); i++) {
+      
+      if ((x == resolution_to_video_format[i].x) &&
+          (y == resolution_to_video_format[i].y) &&
+          (interlaced == resolution_to_video_format[i].interlaced) ) {
+         
+         d = abs(resolution_to_video_format[i].hz - hz);
+         if (d < rateDiff) {
+            rateDiff = d;
+            mode = resolution_to_video_format[i].vmode;
+         }
+      }
+   }
 
-	if (mode < 0) {
-		printk (KERN_ERR "HDMI TX - no matching resolution %dx%d%c %dHz\n",x,y,interlaced ? 'i':'p',hz);
-		return 0;
-	}
+   if (mode < 0) {
+      printk (KERN_ERR "HDMI TX - no matching resolution %dx%d%c %dHz\n",x,y,interlaced ? 'i':'p',hz);
+      return 0;
+   }
 
-	if (rateDiff == 0)
-		printk (KERN_INFO "HDMI TX - FOUND exact resolution %d\n",mode);
-	else
-		printk (KERN_INFO "HDMI TX - Found good candidate %d (requested %dhz, found %dhz)\n",
-			mode,hz,resolution_to_video_format[mode].hz);
+   if (rateDiff == 0)
+      printk (KERN_INFO "HDMI TX - FOUND exact resolution %d\n",mode);
+   else
+      printk (KERN_INFO "HDMI TX - Found good candidate %d (requested %dhz, found %dhz)\n",
+              mode,hz,resolution_to_video_format[mode].hz);
 
-	if (initialized) {
-	    if (this->tda.setio.video_in.format != mode) {
-            this->tda.setio.video_in.format = mode;
-            this->tda.setio.video_out.format = mode;
-    		show_video(this);
-    	}
-	} else {
-		saved_mode = mode;
-	}
+   if (initialized) {
+      down(&this->driver.sem);
 
-	return 1;
+      if (this->tda.setio.video_in.format != mode) {
+
+         this->tda.setio.video_in.format = mode;
+         this->tda.setio.video_out.format = mode;
+         show_video(this);
+      }
+      
+      up(&this->driver.sem);
+   } else {
+      saved_mode = mode;
+   }
+
+   return 1;
+}
+
+void tda19988_set_audio_rate(unsigned rate)
+{
+   static struct { unsigned rate; tmdlHdmiTxAudioRate_t code; } rateMap[] = {
+      {  32000,  TMDL_HDMITX_AFS_32K },
+      {  44100,  TMDL_HDMITX_AFS_44K }, 
+      {  48000,  TMDL_HDMITX_AFS_48K },
+      {  88200,  TMDL_HDMITX_AFS_88K },
+      {  96000,  TMDL_HDMITX_AFS_96K },
+      { 176400, TMDL_HDMITX_AFS_176K },
+      { 192000, TMDL_HDMITX_AFS_192K }
+   };
+
+   tda_instance *this = &our_instance;
+   unsigned i, temp, rateDiff = INT_MAX, err = 0;
+   tmdlHdmiTxAudioRate_t rateCode = this->tda.setio.audio_in.rate;
+
+   if(!initialized)
+      return;
+
+   for (i = 0; i < ARRAY_SIZE(rateMap); i++) {
+      temp = abs(rateMap[i].rate - rate);
+      if( temp < rateDiff) {
+         rateCode = rateMap[i].code;
+         rateDiff = temp;
+      }
+   }
+
+   printk(KERN_INFO "HDMI TX - setting audio rate to %d (%d -> %d)\n", 
+          rate, this->tda.setio.audio_in.rate, rateCode);
+
+   down(&this->driver.sem);
+
+   //TRY(tmdlHdmiTxSetAudioMute(this->tda.instance, true));
+
+   if(this->tda.setio.audio_in.rate != rateCode )
+   {
+      this->tda.setio.audio_in.rate = rateCode;
+     
+      TRY(tmdlHdmiTxSetAudioInput(this->tda.instance, \
+                                  this->tda.setio.audio_in, \
+                                  this->tda.setio.sink));
+   }
+
+   //TRY(tmdlHdmiTxResetAudioCts(this->tda.instance));
+   //TRY(tmdlHdmiTxSetAudioMute(this->tda.instance, false));
+
+   up(&this->driver.sem);
+
+TRY_DONE:
+   (void)0;
 }
 
 
@@ -2058,7 +2125,7 @@ int tda19988_configure_tx_inout(int x, int y, int interlaced, int hz)
  */
 static int this_i2c_remove(struct i2c_client *client)
 {
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
    int err=0;
 
    LOG(KERN_INFO,"called\n");
@@ -2120,7 +2187,7 @@ static struct file_operations this_cdev_fops = {
 
 static ssize_t reso_show(struct device *dev,struct device_attribute *attr, char *buf)
 {
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
 
    return sprintf(buf,"format video %d ( %s )\n", \
                   this->tda.setio.video_in.format,                  \
@@ -2130,7 +2197,7 @@ static ssize_t reso_show(struct device *dev,struct device_attribute *attr, char 
 static ssize_t reso_store(struct device *dev,
                           struct device_attribute *attr, const char *buf, size_t size)
 {
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
    int resolution=0;
 
    sscanf(buf,"%d",&resolution);
@@ -2159,7 +2226,7 @@ static ssize_t reso_store(struct device *dev,
 
 static ssize_t audio_show(struct device *dev,struct device_attribute *attr, char *buf)
 {
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
    printk("Audio Show\n");
 
    tda_spy_audio(&this->tda.setio.audio_in);
@@ -2175,7 +2242,7 @@ static ssize_t audio_show(struct device *dev,struct device_attribute *attr, char
 static ssize_t audio_store(struct device *dev,
                            struct device_attribute *attr, const char *buf, size_t size)
 {
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
    char desc_format[]="%d - %d - %d - %d - %d - %d\n";
    tda_audio_in audio;
    
@@ -2220,7 +2287,7 @@ static ssize_t i2cR_store(struct device *dev,
       adb shell "echo '2 1' >/sys/hdmitx/i2cR"
       ... read page 0x02 address 0x01
    */
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
    tmHdmiTxobject_t *p;
    tmErrorCode_t err;
    unsigned int address;
@@ -2242,7 +2309,7 @@ static ssize_t i2cW_store(struct device *dev,
      ... write 0x02 page 0x02 address 0x01 using mask 0x03
    */
 
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
    tmHdmiTxobject_t *p;
    tmErrorCode_t err;
    unsigned int page,address,mask,value;
@@ -2274,7 +2341,7 @@ static struct device_attribute *display_sysfs_attrs[] = {
 
 static int comm_init(void)
 {
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
    int retval=0;
    int i=0;	
    struct device_attribute *attr;
@@ -2302,7 +2369,7 @@ static int comm_init(void)
 
 static void comm_exit(void)
 {
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
    int i=0;	
    struct device_attribute *attr;
    while ((attr = display_sysfs_attrs[i++]) != NULL) {
@@ -2316,7 +2383,7 @@ static void comm_exit(void)
  */
 static int __init tx_init(void)
 {
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
    dev_t dev=0;
    int err=0;
 
@@ -2447,7 +2514,7 @@ static int __init tx_init(void)
  */
 static void __exit tx_exit(void)
 {
-   tda_instance *this=&our_instance;
+   tda_instance *this = &our_instance;
 
    LOG(KERN_INFO,"called\n");
 
