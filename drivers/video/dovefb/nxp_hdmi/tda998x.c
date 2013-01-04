@@ -2113,10 +2113,8 @@ void tda19988_set_audio_rate(unsigned rate)
    //TRY(tmdlHdmiTxResetAudioCts(this->tda.instance));
    //TRY(tmdlHdmiTxSetAudioMute(this->tda.instance, false));
 
-   up(&this->driver.sem);
-
 TRY_DONE:
-   (void)0;
+   up(&this->driver.sem);
 }
 
 
