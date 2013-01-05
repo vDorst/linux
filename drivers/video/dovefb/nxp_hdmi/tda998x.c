@@ -2086,7 +2086,7 @@ void tda19988_set_audio_rate(unsigned rate)
    if(!initialized)
       return;
 
-   for (i = 0; i < ARRAY_SIZE(rateMap); i++) {
+   for (i = 0; rateDiff && i < ARRAY_SIZE(rateMap); i++) {
       temp = abs(rateMap[i].rate - rate);
       if( temp < rateDiff) {
          rateCode = rateMap[i].code;
@@ -2099,21 +2099,30 @@ void tda19988_set_audio_rate(unsigned rate)
 
    down(&this->driver.sem);
 
-   //TRY(tmdlHdmiTxSetAudioMute(this->tda.instance, true));
+   if (this->tda.setio.audio_in.rate != rateCode) {
 
-   if(this->tda.setio.audio_in.rate != rateCode )
-   {
-      this->tda.setio.audio_in.rate = rateCode;
-     
+      // Hack: temporary switch to I2S to avoid audio lockup
+      TRY(tmdlHdmiTxSetAudioMute(this->tda.instance, true));
+      msleep(10);
+   
+      this->tda.setio.audio_in.format = TMDL_HDMITX_AFMT_I2S;
       TRY(tmdlHdmiTxSetAudioInput(this->tda.instance, \
                                   this->tda.setio.audio_in, \
                                   this->tda.setio.sink));
+      msleep(20);
+
+      // set new audio sampling rate
+      this->tda.setio.audio_in.rate = rateCode;
+      this->tda.setio.audio_in.format = TMDL_HDMITX_AFMT_SPDIF;
+      TRY(tmdlHdmiTxSetAudioInput(this->tda.instance, \
+                                 this->tda.setio.audio_in, \
+                                 this->tda.setio.sink));
+      msleep(10);
    }
-
-   //TRY(tmdlHdmiTxResetAudioCts(this->tda.instance));
-   //TRY(tmdlHdmiTxSetAudioMute(this->tda.instance, false));
-
+      
 TRY_DONE:
+   tmdlHdmiTxSetAudioMute(this->tda.instance, this->tda.audio_mute);
+
    up(&this->driver.sem);
 }
 
