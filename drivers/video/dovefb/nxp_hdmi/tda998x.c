@@ -34,9 +34,7 @@
 //#include <mach/display.h>
 
 /* HDMI DevLib */
-#include "tmNxCompId.h"
-#include "tmdlHdmiTx_Types.h"
-#include "tmdlHdmiTx_Functions.h"
+#include "tmdlHdmiTx.h"
 
 /* local */
 #include "tda998x_version.h"
@@ -563,7 +561,7 @@ static char *tda_ioctl(int io)
 static int tda_spy(int verbose)
 {
    tda_instance *this = &our_instance;
-   int i,err=0;
+   int i,err = 0;
 
    if (!verbose) {
       return err;
@@ -710,7 +708,7 @@ static int tda_spy(int verbose)
  */
 void hdcp_on(tda_instance *this)
 {
-   int err=0;
+   int err = 0;
 
    if (this->tda.hdcp_status != HDCP_IS_NOT_INSTALLED) { /* check HDCP is installed ... */
          if (this->tda.hdcp_enable) { /* ... but requested ! */ 
@@ -733,7 +731,7 @@ void hdcp_on(tda_instance *this)
  */
 void hdcp_off(tda_instance *this)
 {
-   int err=0;
+   int err = 0;
 
    if (this->tda.hdcp_status != HDCP_IS_NOT_INSTALLED) { /* check HDCP is installed ... */
 
@@ -750,7 +748,7 @@ void hdcp_off(tda_instance *this)
  */
 void show_video(tda_instance *this)
 {
-   int err=0;
+   int err = 0;
 
    if (this->tda.rx_device_active) { /* check RxSens */
       if (this->tda.hot_plug_detect == TMDL_HDMITX_HOTPLUG_ACTIVE) { /* should be useless, but legacy... */
@@ -783,7 +781,7 @@ static void interrupt_polling(struct work_struct *dummy)
 {
    tda_instance *this = &our_instance;
    tmdlHdmiTxEvent_t prevEvent;
-   int err=0, loopCnt=0;
+   int err = 0, loopCnt=0;
 
    do {
       prevEvent = this->tda.event;
@@ -813,7 +811,7 @@ static void interrupt_polling(struct work_struct *dummy)
  */
 static void hdcp_check(struct work_struct *dummy)
 {
-   int err=0;
+   int err = 0;
    tda_instance *this = &our_instance;
    tmdlHdmiTxHdcpCheck_t hdcp_status;
 
@@ -910,7 +908,7 @@ static irqreturn_t tda_irq(int irq, void *_udc)
 static void eventCallbackTx(tmdlHdmiTxEvent_t event)
 {
    tda_instance *this = &our_instance;
-   int err=0;
+   int err = 0;
    unsigned short new_addr;
 #if defined (TMFL_TDA19989) || defined (TMFL_TDA9984) 
    tda_hdcp_fail hdcp_fail;
@@ -1007,7 +1005,7 @@ static void eventCallbackTx(tmdlHdmiTxEvent_t event)
  */
 static int hdmi_tx_init(tda_instance *this)
 {
-   int err=0;
+   int err = 0;
 
    LOG(KERN_INFO,"called\n");
 
@@ -1111,7 +1109,7 @@ static int hdmi_tx_init(tda_instance *this)
 void reset_hdmi(int hdcp_module)
 {
    tda_instance *this = &our_instance;
-   int err=0;
+   int err = 0;
 
    down(&this->driver.sem);
 
@@ -1156,7 +1154,7 @@ EXPORT_SYMBOL(reset_hdmi);
 /*
  *  
  */
-short edid_phy_addr(void)
+unsigned short edid_phy_addr(void)
 {
    tda_instance *this = &our_instance;
 
@@ -1203,7 +1201,7 @@ EXPORT_SYMBOL(edid_received);
 int hdmi_enable(void)
 {
    tda_instance *this = &our_instance;
-   int err=0;
+   int err = 0;
 
    LOG(KERN_INFO,"called\n");
 
@@ -1234,7 +1232,7 @@ EXPORT_SYMBOL(hdmi_enable);
 int hdmi_disable(int event_tracking)
 { 
    tda_instance *this = &our_instance;
-   int err=0;
+   int err = 0;
    
    LOG(KERN_INFO,"called\n");
 
@@ -1412,7 +1410,7 @@ static int this_cdev_open(struct inode *pInode, struct file *pFile)
 static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long arg)
 {
    tda_instance* this = pFile->private_data;
-   int err=0;
+   int err = 0;
 
    LOG(KERN_INFO,":%s\n",tda_ioctl(_IOC_NR(cmd)));
 
@@ -1823,7 +1821,7 @@ static int this_cdev_release(struct inode *pInode, struct file *pFile)
 static int this_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
    tda_instance *this = &our_instance;
-   int err=0;
+   int err = 0;
 
    LOG(KERN_INFO,"called\n");
 
@@ -2133,7 +2131,7 @@ TRY_DONE:
 static int this_i2c_remove(struct i2c_client *client)
 {
    tda_instance *this = &our_instance;
-   int err=0;
+   int err = 0;
 
    LOG(KERN_INFO,"called\n");
 
@@ -2392,7 +2390,7 @@ static int __init tx_init(void)
 {
    tda_instance *this = &our_instance;
    dev_t dev=0;
-   int err=0;
+   int err = 0;
 
    /* 
       general device context

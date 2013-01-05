@@ -34,7 +34,6 @@
 #include <linux/gpio.h>
 
 /* HDMI DevLib */
-#include "tmNxCompId.h"
 #include "tmdlHdmiCEC.h"
 #include "tmdlHdmiCEC_local.h"
 
@@ -557,10 +556,10 @@ static void cec_listen_multi(cec_instance *this,
  */
 static void cec_interrupt(struct work_struct *dummy)
 {
-   cec_instance *this=&our_instance;
+   cec_instance *this = &our_instance;
    cec_power display_active = get_hpd_status();
    unsigned short new_phy_addr = edid_phy_addr();
-   int err=0;
+   int err = 0;
    
    LOG(KERN_INFO,"called\n");
    
@@ -682,7 +681,7 @@ void polling_timeout(unsigned long arg)
 #if 0
    /* fake frame for equipement-less testing */
 
-      cec_instance *this=&our_instance;
+      cec_instance *this = &our_instance;
 
       if (this->driver.timer.data++>1000) {
          printk(KERN_INFO "Fake Rx message\n");
@@ -710,7 +709,7 @@ void polling_timeout(unsigned long arg)
  */
 static irqreturn_t tda_irq(int irq, void *_udc)
 {
-   cec_instance *this=&our_instance;
+   cec_instance *this = &our_instance;
    /*    printk(KERN_INFO "DBG caught irq:%d\n",irq); */
  
    /* do it now */
@@ -740,8 +739,8 @@ static void user_control(int key, int press)
  */
 static void eventCallbackCEC(tmdlHdmiCecEvent_t event, unsigned char *data, unsigned char length)
 {
-   int err=0;
-   cec_instance *this=&our_instance;
+   int err = 0;
+   cec_instance *this = &our_instance;
    int opcode;
    int initiator,receiver;
    cec_frame *frame;
@@ -1041,7 +1040,7 @@ static void eventCallbackCEC(tmdlHdmiCecEvent_t event, unsigned char *data, unsi
  */
 static int hdmi_cec_init(cec_instance *this, const char *osd_name)
 {
-   int err=0;
+   int err = 0;
 
    /* Real opening */
    TRY(tmdlHdmiCecOpen(&this->cec.inst));
@@ -1130,7 +1129,7 @@ static int this_cdev_open(struct inode *pInode, struct file *pFile)
 static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long arg)
 {
    cec_instance* this = pFile->private_data;
-   int err=0;
+   int err = 0;
 
    LOG(KERN_INFO,":%s\n",cec_ioctl(_IOC_NR(cmd)));
 
@@ -2184,8 +2183,8 @@ static int this_cdev_release(struct inode *pInode, struct file *pFile)
  */
 static int __devinit this_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
-   cec_instance *this=&our_instance;
-   int err=0;
+   cec_instance *this = &our_instance;
+   int err = 0;
 
    LOG(KERN_INFO,"called\n");
 
@@ -2277,8 +2276,8 @@ static int __devinit this_i2c_probe(struct i2c_client *client, const struct i2c_
  */
 static int this_i2c_remove(struct i2c_client *client)
 {
-   cec_instance *this=&our_instance;
-   int err=0;
+   cec_instance *this = &our_instance;
+   int err = 0;
 
    LOG(KERN_INFO,"called\n");
 
@@ -2328,9 +2327,9 @@ static struct file_operations this_cdev_fops = {
  */
 static int __init cec_init(void)
 {
-   cec_instance *this=&our_instance;
+   cec_instance *this = &our_instance;
    dev_t dev=0;
-   int err=0;
+   int err = 0;
 
    /* 
       general device context
@@ -2428,7 +2427,7 @@ static int __init cec_init(void)
  */
 static void __exit cec_exit(void)
 {
-   cec_instance *this=&our_instance;
+   cec_instance *this = &our_instance;
    
    LOG(KERN_INFO,"called\n");
    

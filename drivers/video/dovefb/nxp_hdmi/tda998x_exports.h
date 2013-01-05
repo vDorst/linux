@@ -27,7 +27,7 @@ int hdmi_disable(int event_tracking);
 void reset_hdmi(int hdcp_module);
 
 int edid_received(void);
-short edid_phy_addr(void); 
+unsigned short edid_phy_addr(void); 
 tmPowerState_t get_hdmi_status(void);
 tmPowerState_t get_hpd_status(void);
 
