@@ -2101,13 +2101,13 @@ void tda19988_set_audio_rate(unsigned rate)
 
       // Hack: temporary switch to I2S to avoid audio lockup
       TRY(tmdlHdmiTxSetAudioMute(this->tda.instance, true));
-      msleep(10);
+      msleep(5);
    
       this->tda.setio.audio_in.format = TMDL_HDMITX_AFMT_I2S;
       TRY(tmdlHdmiTxSetAudioInput(this->tda.instance, \
                                   this->tda.setio.audio_in, \
                                   this->tda.setio.sink));
-      msleep(20);
+      msleep(30);
 
       // set new audio sampling rate
       this->tda.setio.audio_in.rate = rateCode;
@@ -2115,7 +2115,7 @@ void tda19988_set_audio_rate(unsigned rate)
       TRY(tmdlHdmiTxSetAudioInput(this->tda.instance, \
                                  this->tda.setio.audio_in, \
                                  this->tda.setio.sink));
-      msleep(10);
+      msleep(5);
    }
       
 TRY_DONE:
