@@ -167,6 +167,8 @@ struct kirkwood_dma_data {
 	int i2s;
 	int spdif;
 	int iec958;
+	int use_i2s;
+	int use_spdif;
 };
 
 #endif
