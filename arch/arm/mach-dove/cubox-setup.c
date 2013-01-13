@@ -246,7 +246,7 @@ static struct i2c_board_info __initdata dove_cubox_i2c_bus0_devs[] = {
  *       SPI0: 4M Flash
  ****************************************************************************/
 static const struct flash_platform_data cubox_spi_flash_data = {
-	.type		= "w25q32",
+	.type		= "n25q032",
 };
 
 static struct spi_board_info __initdata cubox_spi_flash_info[] = {
