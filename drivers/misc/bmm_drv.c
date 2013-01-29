@@ -589,19 +589,11 @@ void bmm_consistent_sync(unsigned long start, size_t size, int direction)
 
 	switch (direction) {
 	case BMM_DMA_FROM_DEVICE:	/* invalidate only */
-#if 1
-		dmac_map_area((void *)start, size, DMA_FROM_DEVICE);
-#else
-		dmac_inv_range((void *)start, (void *)end);
-#endif
+		dmac_flush_range((void *)start, (void *)end);
 		outer_inv_range(paddr, paddr + size);
 		break;
 	case BMM_DMA_TO_DEVICE:		/* writeback only */
-#if 1
-		dmac_map_area((void *)start, size, DMA_TO_DEVICE);
-#else
-		dmac_clean_range((void *)start, (void *)end);
-#endif
+		dmac_flush_range((void *)start, (void *)end);
 		outer_clean_range(paddr, paddr + size);
 		break;
 	case BMM_DMA_BIDIRECTIONAL:	/* writeback and invalidate */
