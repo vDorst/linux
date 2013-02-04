@@ -532,6 +532,7 @@ config ARCH_DOVE
 	select ARCH_REQUIRE_GPIOLIB
 	select COMMON_CLK_DOVE
 	select CPU_V7
+	select CPU_PJ4
 	select GENERIC_CLOCKEVENTS
 	select MIGHT_HAVE_PCI
 	select PINCTRL
