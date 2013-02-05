@@ -23,11 +23,40 @@
 			linux,default-trigger = "default-on";
 		};
 	};
+
+	/* Dove frame buffer */
+	dovefb {
+		compatible = "marvell,dovefb";
+		interrupts = <47>;
+	};
 };
 
 &uart0 { status = "okay"; };
 &sata0 { status = "okay"; };
-&i2c0 { status = "okay"; };
+
+&i2c0 {
+	clock-frequency = <100000>;
+	status = "okay";
+
+	/* si5351@60 from Sebastian Hesselbarth */
+	si5351@60 {
+		compatible = "silabs,si5351";
+		reg = <0x60>;
+	};
+
+	tdacec@34 {
+		compatible = "nxp,tda99Xcec";
+		reg = <0x34>;
+/*		interrupt-parent = <&gpio0>;
+ *		interrupts = <27 2>;		 * shared interrupt */
+	};
+	tda@70 {
+		compatible = "nxp,tda998X";	/* new: "nxp,tda998x" */
+		reg = <0x70>;
+		interrupt-parent = <&gpio0>;
+		interrupts = <27 2>;		/* falling edge */
+	};
+};
 
 &sdio0 {
 	status = "okay";
@@ -47,7 +76,7 @@
 };
 
 &pinctrl {
-	pinctrl-0 = <&pmx_gpio_12 &pmx_gpio_18>;
+	pinctrl-0 = <&pmx_gpio_12 &pmx_gpio_18 &pmx_gpio_camera>;
 	pinctrl-names = "default";
 
 	pmx_gpio_12: pmx-gpio-12 {
@@ -57,6 +86,12 @@
 
 	pmx_gpio_18: pmx-gpio-18 {
 		marvell,pins = "mpp18";
+		marvell,function = "gpio";
+	};
+
+/* nxp HDMI irq on pin 27 */
+	pmx_gpio_camera: pmx-gpio-camera {
+		marvell,pins = "mpp_camera";
 		marvell,function = "gpio";
 	};
 };
