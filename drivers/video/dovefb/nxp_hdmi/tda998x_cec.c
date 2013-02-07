@@ -508,9 +508,9 @@ static void cec_standby(cec_instance *this)
 /*
  * enable listening on a single logical addresses
  */
-static void cec_listen_single(cec_instance *this, unsigned char rx_addr)
+static int cec_listen_single(cec_instance *this, unsigned char rx_addr)
 {
-   int err;
+   int err = 0;
 
    LOG(KERN_INFO,"logAddr set to 0x%x\n", rx_addr);
 
@@ -520,16 +520,16 @@ static void cec_listen_single(cec_instance *this, unsigned char rx_addr)
    this->cec.rx_addr_mask = (1 << rx_addr) & 0x7fff;
 
  TRY_DONE:
-   (void)0;
+   return err;
 }
 
 /*
  * enable listening on multiple logical addresses
  */
-static void cec_listen_multi(cec_instance *this, 
-                             unsigned short onMask, unsigned short offMask)
+static int cec_listen_multi(cec_instance *this, 
+                            unsigned short onMask, unsigned short offMask)
 {
-   int err;
+   int err = 0;
    unsigned short newMask, changeMask;
 
    newMask = (this->cec.rx_addr_mask | onMask) & ~(offMask | 0x8000);
@@ -548,7 +548,7 @@ static void cec_listen_multi(cec_instance *this,
    LOG(KERN_INFO,"logAddrMask is now 0x%04x\n", this->cec.rx_addr_mask);
 
  TRY_DONE:
-   (void)0;
+   return err;
 }
 
 /*
@@ -1193,9 +1193,13 @@ static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long 
                   this->driver.read_queue_head = this->driver.read_queue_tail;
                   wake_up_interruptible(&this->driver.wait_read);
                   wake_up_interruptible(&this->driver.wait_write);
-	       }
+               }
 
-               cec_listen_single(this, CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST);
+               err = cec_listen_single(this, CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST);
+               if (err) {
+                  this->driver.raw_mode = 0;
+                  this->driver.write_pending = 1;
+               }
             }
 	    break;
 	 }
@@ -1225,7 +1229,7 @@ static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long 
             BUG_ON(copy_from_user(&rx_mask,(void *)arg,sizeof(rx_mask)) != 0);
 
             if (this->driver.raw_mode) {
-               cec_listen_multi(this, rx_mask.SwitchOn, rx_mask.SwitchOff);
+               err = cec_listen_multi(this, rx_mask.SwitchOn, rx_mask.SwitchOff);
             }
             break;
          }
@@ -1427,7 +1431,7 @@ static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long 
             unsigned char rx_addr;
             BUG_ON(copy_from_user(&rx_addr,(void *)arg,sizeof(unsigned char)) != 0);
             if (rx_addr <= CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST) {
-               cec_listen_single(this, rx_addr);
+               err = cec_listen_single(this, rx_addr);
             }
             break;
          }
@@ -2118,8 +2122,6 @@ static unsigned int this_cdev_poll(struct file *pFile, poll_table *poll_data)
    cec_instance* this = pFile->private_data;
    unsigned int mask = 0;
 
-   down(&this->driver.sem);
-
    if (this->driver.raw_mode) {
       poll_wait(pFile, &this->driver.wait_read, poll_data);
       poll_wait(pFile, &this->driver.wait_write, poll_data);
@@ -2133,8 +2135,6 @@ static unsigned int this_cdev_poll(struct file *pFile, poll_table *poll_data)
    } else {
       mask |= POLLIN | POLLRDNORM | POLLOUT | POLLWRNORM;
    }
-
-   up(&this->driver.sem);
 
    return mask;
 }
