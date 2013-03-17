@@ -1081,19 +1081,22 @@ static int hdmi_tx_init(tda_instance *this)
    this->tda.setio.audio_in.channelStatus.wordLength = TMDL_HDMITX_CSWORD_DEFAULT;
    this->tda.setio.audio_in.channelStatus.origSampleFreq = TMDL_HDMITX_CSOFREQ_44_1k;
 #else
-   this->tda.setio.audio_in.format = TMDL_HDMITX_AFMT_SPDIF;
-   this->tda.setio.audio_in.dstRate = TMDL_HDMITX_DSTRATE_DOUBLE;//TMDL_HDMITX_DSTRATE_SINGLE; /* not relevant here */
-   this->tda.setio.audio_in.channelAllocation = 0; /* audio channel allocation (Ref to CEA-861D p85) */
    this->tda.setio.audio_in.rate = TMDL_HDMITX_AFS_44K;
+   this->tda.setio.audio_in.format = TMDL_HDMITX_AFMT_SPDIF;
+
+   this->tda.setio.audio_in.dstRate = TMDL_HDMITX_DSTRATE_SINGLE; /* not relevant here */
+   this->tda.setio.audio_in.channelAllocation = 0; /* audio channel allocation (Ref to CEA-861D p85) */
+   
+// Rudi - defaults for I2S mode, probaly not needed for SPDIF
+   this->tda.setio.audio_in.i2sQualifier = TMDL_HDMITX_I2SQ_32BITS;
    this->tda.setio.audio_in.channelStatus.PcmIdentification = TMDL_HDMITX_AUDIO_DATA_PCM;
    this->tda.setio.audio_in.channelStatus.CopyrightInfo = TMDL_HDMITX_CSCOPYRIGHT_UNPROTECTED;
    this->tda.setio.audio_in.channelStatus.FormatInfo = TMDL_HDMITX_CSFI_PCM_2CHAN_NO_PRE;
-   this->tda.setio.audio_in.channelStatus.categoryCode = 0;
+   this->tda.setio.audio_in.channelStatus.categoryCode = 0x82;
    this->tda.setio.audio_in.channelStatus.clockAccuracy = TMDL_HDMITX_CSCLK_LEVEL_II;
    this->tda.setio.audio_in.channelStatus.maxWordLength = TMDL_HDMITX_CSMAX_LENGTH_24;
    this->tda.setio.audio_in.channelStatus.wordLength = TMDL_HDMITX_CSWORD_DEFAULT;
    this->tda.setio.audio_in.channelStatus.origSampleFreq = TMDL_HDMITX_CSOFREQ_44_1k;
-   this->tda.setio.audio_in.i2sQualifier = TMDL_HDMITX_I2SQ_32BITS;
 #endif
 
 // Rabeeh - D2 uses below?? --> This is original   this->tda.setio.sink = TMDL_HDMITX_SINK_HDMI; /* skip edid reading */

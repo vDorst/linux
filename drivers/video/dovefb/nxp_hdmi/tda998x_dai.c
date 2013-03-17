@@ -41,16 +41,15 @@ extern void tda19988_set_audio_rate(unsigned rate);
 
 #define STUB_FORMATS	(SNDRV_PCM_FMTBIT_S16_LE | \
 			 SNDRV_PCM_FMTBIT_S24_LE | \
-			 SNDRV_PCM_FMTBIT_IEC958_SUBFRAME_LE | \
-			 SNDRV_PCM_FMTBIT_IEC958_SUBFRAME_BE)
+			 SNDRV_PCM_FMTBIT_IEC958_SUBFRAME_LE)
 
-			 
+
 static int hdmi_dit_hw_params(struct snd_pcm_substream *substream,
 			       struct snd_pcm_hw_params *params, 
 			       struct snd_soc_dai *dai)
 {
 	DPRINTK("substream = %p, params = %p\n", substream, params);
-	DPRINTK("rate = %d\n", params_rate(params));
+	DPRINTK("rate = %d, channels = %d\n", params_rate(params), params_channels(params));
 	DPRINTK("dai = %s\n", dai->name);
 	
 	tda19988_set_audio_rate(params_rate(params));
