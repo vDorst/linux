@@ -202,13 +202,12 @@ static int kirkwood_i2s_set_fmt(struct snd_soc_dai *cpu_dai,
 	return 0;
 }
 
-static inline void kirkwood_set_dco(void __iomem *io, unsigned long rate)
+static inline int kirkwood_set_dco(void __iomem *io, unsigned long rate)
 {
 	unsigned long value;
 
 	value = KIRKWOOD_DCO_CTL_OFFSET_0;
 	switch (rate) {
-	default:
 	case 44100:
 		value |= KIRKWOOD_DCO_CTL_FREQ_11;
 		break;
@@ -218,8 +217,17 @@ static inline void kirkwood_set_dco(void __iomem *io, unsigned long rate)
 	case 96000:
 		value |= KIRKWOOD_DCO_CTL_FREQ_24;
 		break;
+	default:
+		return -EINVAL;
 	}
 	writel(value, io + KIRKWOOD_DCO_CTL);
+
+	/*
+	 * After this register is written, before it can be re-written, it must be
+	 * read. After the register is read, a delay of 400 ns should be inserted 
+	 * and then a new value can be written.
+	 */ 
+	value = readl(io + KIRKWOOD_DCO_CTL);
 
 	/* wait for dco locked */
 	do {
@@ -227,24 +235,32 @@ static inline void kirkwood_set_dco(void __iomem *io, unsigned long rate)
 		value = readl(io + KIRKWOOD_DCO_SPCR_STATUS);
 		value &= KIRKWOOD_DCO_SPCR_STATUS_DCO_LOCK;
 	} while (value == 0);
+
+	return 0;
 }
 
 static inline void kirkwood_set_rate(struct kirkwood_dma_data* priv, 
 				     unsigned long rate)
 {
-	if (rate == 44100 || rate == 48000 || rate == 96000) {
-		/* use internal dco for supported rates */
-		DPRINTK("dco set rate = %lu\n", rate);
-		kirkwood_set_dco(priv->io, rate);
+	/* prefer external clk, if present */
+	if (!IS_ERR(priv->extclk)) {
+		DPRINTK("extclk set rate = %lu -> %lu\n", rate, 256*rate);
+		if (clk_set_rate(priv->extclk, 256*rate) == 0) {
+			writel(KIRKWOOD_MCLK_SOURCE_EXTCLK,
+			       priv->io+KIRKWOOD_CLOCKS_CTRL);
+			return;
+		}
+		DPRINTK("failed to set extclk rate !!!\n");
+	}
+	
+	/* use internal dco */
+	DPRINTK("dco set rate = %lu\n", rate);
+	if (kirkwood_set_dco(priv->io, rate) == 0) {
 		writel(KIRKWOOD_MCLK_SOURCE_DCO, 
 		       priv->io+KIRKWOOD_CLOCKS_CTRL);
-	} else if (!IS_ERR(priv->extclk)) {
-		/* use optional external clk for other rates */
-		DPRINTK("extclk set rate = %lu -> %lu\n", rate, 256*rate);
-		clk_set_rate(priv->extclk, 256*rate);
-		writel(KIRKWOOD_MCLK_SOURCE_EXTCLK, 
-		       priv->io+KIRKWOOD_CLOCKS_CTRL);
+		return;
 	}
+	DPRINTK("failed to set dco clk rate !!!\n");
 }
 
 static void inline kirkwood_i2s_set_channel_status(
