@@ -159,10 +159,12 @@ static void bmm_dump_list(struct list_head *head)
 
 static void bmm_dump_all(void)
 {
+	mutex_lock(&bmm_mutex);
 	pr_info("free block list:\n");
 	bmm_dump_list(&(bmm_free_block.list));
 	pr_info("used block list:\n");
 	bmm_dump_list(&(bmm_used_block.list));
+	mutex_unlock(&bmm_mutex);
 }
 
 static struct bmm_block_t *bmm_search_vaddr(struct list_head *head,
