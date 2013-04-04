@@ -23,7 +23,6 @@
 
 #if defined(CONFIG_LEDS_TRIGGER_REMOTE_CONTROL)
 /* LED Trigger Remote Control. */
-#include <linux/leds.h>
 extern void ledtrig_rc_activity(void);
 #endif
 
