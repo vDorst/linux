@@ -21,6 +21,13 @@
 #include <linux/module.h>
 #include "rc-core-priv.h"
 
+#if defined(CONFIG_LEDS_TRIGGER_REMOTE_CONTROL)
+/* LED Trigger Remote Control. */
+#include <linux/leds.h>
+extern void ledtrig_rc_activity(void);
+#endif
+
+
 /* Sizes are in bytes, 256 bytes allows for 32 entries on x64 */
 #define IR_TAB_MIN_SIZE	256
 #define IR_TAB_MAX_SIZE	8192
@@ -647,8 +654,13 @@ static void ir_do_keydown(struct rc_dev *dev, int scancode,
 			   dev->input_name, keycode, scancode);
 		input_report_key(dev->input_dev, keycode, 1);
 	}
-
 	input_sync(dev->input_dev);
+
+#if defined(CONFIG_LEDS_TRIGGER_REMOTE_CONTROL)
+	/* LED Trigger Remote Control. */
+	ledtrig_rc_activity();
+#endif
+
 }
 
 /**
